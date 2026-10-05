@@ -83,7 +83,10 @@ def _model_options(
     ):
         if key in options and options[key] != inferred:
             raise ValueError(f"{key} conflicts with model identity: {inferred}")
-    return {**options, "group": meta.group, "version": meta.version, "kind": meta.names.kind}
+    return {
+        **{key: value for key, value in options.items() if key != "plural"},
+        "group": meta.group, "version": meta.version, "kind": meta.names.kind,
+    }
 
 
 def _register_function(
