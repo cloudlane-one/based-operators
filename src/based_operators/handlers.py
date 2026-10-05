@@ -36,7 +36,10 @@ def _prepare(
     if category in {"validate", "mutate"}:
         new = kwargs.get("new")
         if new is None:  # DELETE admission has no new desired object.
-            return _filter(parameter_names, accepts_kwargs, kwargs)
+            payload = dict(kwargs)
+            if "resource" in parameter_names:
+                payload["resource"] = None
+            return _filter(parameter_names, accepts_kwargs, payload)
         body = new
     if body is None:
         return _filter(parameter_names, accepts_kwargs, kwargs)
@@ -146,17 +149,27 @@ def _verify_delete(
     strict_delete: bool,
     parameter_names: frozenset[str],
 ) -> None:
-    if category != "delete" or strict_delete or "resource" not in parameter_names:
+    if category == "delete":
+        if strict_delete or "resource" not in parameter_names:
+            return
+    elif category in {"validate", "mutate"}:
+        if "resource" not in parameter_names:
+            return
+    else:
         return
     try:
         annotation = get_type_hints(fn).get("resource")
     except (NameError, TypeError) as error:
-        raise TypeError("delete fallback needs a resolvable resource annotation") from error
+        if category == "delete":
+            raise TypeError("delete fallback needs a resolvable resource annotation") from error
+        raise TypeError("no-new-object handling needs a resolvable resource annotation") from error
     if not _optional_resource(annotation, model):
-        raise TypeError(
-            "delete fallback requires resource annotated Model | None; "
-            "use strict_delete=True to require a validated snapshot"
-        )
+        if category == "delete":
+            raise TypeError(
+                "delete fallback requires resource annotated Model | None; "
+                "use strict_delete=True to require a validated snapshot"
+            )
+        raise TypeError("admission DELETE requires resource annotated Model | None")
 
 
 def _registration(category: str) -> Callable[..., Any]:

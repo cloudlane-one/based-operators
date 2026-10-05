@@ -260,13 +260,28 @@ def test_admission_invalid_rejected(category: str):
     registry = kopf.OperatorRegistry()
 
     @getattr(tk.on, category)(model=Greeting, registry=registry)
-    def admission(resource: Greeting):
+    def admission(resource: Greeting | None):
         return None
 
     handler = list(registry._webhooks.get_all_handlers())[0]
     with pytest.raises(kopf.AdmissionError) as error:
         asyncio.run(invoke(handler.fn, kwargs={"new": {**BODY, "spec": {}}}))
     assert error.value.code == 422
+
+
+@pytest.mark.parametrize("category", ["validate", "mutate"])
+def test_admission_delete_injects_none_resource(category: str):
+    """DELETE admission invokes model-aware handlers with no resource snapshot."""
+    registry = kopf.OperatorRegistry()
+    observed = []
+
+    @getattr(tk.on, category)(model=Greeting, registry=registry)
+    def admission(resource: Greeting | None):
+        observed.append(resource)
+
+    handler = list(registry._webhooks.get_all_handlers())[0]
+    asyncio.run(invoke(handler.fn, kwargs={"new": None}))
+    assert observed == [None]
 
 
 def test_kopf_public_api_inventory_is_reexported():
