@@ -161,6 +161,16 @@ def test_status_patch_rejects_non_dict_status():
         tk.patch_status({"status": None}, Status(observed="ready"))
 
 
+def test_status_patch_rejects_non_dict_patch():
+    """Status merge reports a malformed patch clearly."""
+
+    class Status(BaseModel):
+        observed: str | None = None
+
+    with pytest.raises(TypeError, match="patch must be a dict"):
+        tk.patch_status(None, Status(observed="ready"))
+
+
 def test_daemon_waits_for_corrected_live_body():
     """A daemon starts only when live observed input becomes valid."""
     registry = kopf.OperatorRegistry()

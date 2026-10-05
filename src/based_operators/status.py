@@ -12,6 +12,8 @@ def patch_status(patch: Any, status: BaseModel) -> None:
     """
     if not isinstance(status, BaseModel):
         raise TypeError("status must be a Pydantic model")
+    if not isinstance(patch, dict):
+        raise TypeError("patch must be a dict")
     status_patch = patch.setdefault("status", {})
     if not isinstance(status_patch, dict):
         raise TypeError("patch['status'] must be a dict")
