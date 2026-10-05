@@ -8,7 +8,7 @@ from typing import Literal, cast
 import kopf
 import pytest
 from kopf._core.actions.invocation import invoke
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import based_operators as tk
 import based_operators.handlers as handler_module
@@ -21,7 +21,7 @@ class Spec(BaseModel):
 class Greeting(BaseModel):
     api_version: Literal["example.com/v1"] = "example.com/v1"
     kind: Literal["Greeting"] = "Greeting"
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
     spec: Spec
 
 
