@@ -442,3 +442,20 @@ def test_build_rejects_incompatible_serialization_alias(
     with pytest.raises(BuildError, match="incompatible input/output aliases"):
         build(root, root / "out", image="x")
     assert not (root / "out").exists()
+
+
+def test_build_rejects_incompatible_resource_envelope_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Do not generate a CRD whose fixed spec key is rejected by Pydantic."""
+    root = project(tmp_path)
+    sample = root / "src" / "sample.py"
+    sample.write_text(
+        sample.read_text()
+        .replace("from pydantic import BaseModel\n", "from pydantic import BaseModel, Field\n")
+        .replace("    spec: Spec\n", "    spec: Spec = Field(alias='desired')\n")
+    )
+    monkeypatch.syspath_prepend(str(root))
+    with pytest.raises(BuildError, match="incompatible input alias for Kubernetes key 'spec'"):
+        build(root, root / "out", image="x")
+    assert not (root / "out").exists()

@@ -23,7 +23,7 @@ from unittest.mock import patch
 from kdantic.cli import _make_version_block, build_crd_object
 from kdantic.helpers.schema import build_k8s_model_schema
 from kdantic.helpers.settings import Settings
-from pydantic import BaseModel
+from pydantic import AliasChoices, AliasPath, BaseModel
 
 from based_operators.metadata import resolve_metadata
 
@@ -147,6 +147,28 @@ def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
                     raise BuildError(f"{full_name}: default is not JSON serializable") from exc
     finally:
         seen.remove(model)
+
+
+def _accepts_input_name(model: type[BaseModel], field_name: str, input_name: str) -> bool:
+    """Check whether a field accepts a fixed resource key during validation."""
+    field = model.model_fields[field_name]
+    input_alias = field.validation_alias or field.alias
+    if input_alias is None:
+        return input_name == field_name
+    aliases = input_alias.choices if isinstance(input_alias, AliasChoices) else (input_alias,)
+    alias_matches = any(
+        alias == input_name
+        or isinstance(alias, AliasPath) and alias.convert_to_aliases() == [input_name]
+        for alias in aliases
+    )
+    return (
+        model.model_config.get("validate_by_alias", True) and alias_matches
+    ) or (
+        input_name == field_name
+        and model.model_config.get(
+            "validate_by_name", model.model_config.get("populate_by_name", False)
+        )
+    )
 
 
 def _normalize_nested_required(annotation: object, schema: dict) -> None:
@@ -572,6 +594,11 @@ def _generate_crds(
             spec_type = _model_type(spec.annotation, f"{reference}.spec")
             status = model.model_fields.get("status")
             status_type = _model_type(status.annotation, f"{reference}.status") if status else None
+            for name, field in (("spec", spec), ("status", status)):
+                if field is not None and not _accepts_input_name(model, name, name):
+                    raise BuildError(
+                        f"{reference}.{name}: incompatible input alias for Kubernetes key {name!r}"
+                    )
             seen: set[type[BaseModel]] = set()
             _check_schema(spec_type, seen)
             if status_type:
