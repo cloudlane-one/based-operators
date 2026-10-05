@@ -96,17 +96,20 @@ def _check_type(annotation: object, name: str, seen: set[type[BaseModel]]) -> No
 def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
     """Check every nested field and explicitly serialized default before generation."""
     if model in seen:
-        return
+        raise BuildError(f"{model.__name__}: recursive schemas are unsupported")
     seen.add(model)
-    for name, field in model.model_fields.items():
-        full_name = f"{model.__name__}.{name}"
-        _check_type(field.annotation, full_name, seen)
-        default = field.get_default()
-        if not field.is_required() and default is not None:
-            try:
-                json.dumps(default, allow_nan=False)
-            except (TypeError, ValueError) as exc:
-                raise BuildError(f"{full_name}: default is not JSON serializable") from exc
+    try:
+        for name, field in model.model_fields.items():
+            full_name = f"{model.__name__}.{name}"
+            _check_type(field.annotation, full_name, seen)
+            default = field.get_default()
+            if not field.is_required() and default is not None:
+                try:
+                    json.dumps(default, allow_nan=False)
+                except (TypeError, ValueError) as exc:
+                    raise BuildError(f"{full_name}: default is not JSON serializable") from exc
+    finally:
+        seen.remove(model)
 
 
 def _load_model(reference: str, root: Path) -> type[BaseModel]:
