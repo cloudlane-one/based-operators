@@ -30,11 +30,12 @@ def _optional_resource(annotation: Any, model: type[BaseModel]) -> bool:
 
 
 def _prepare(
-    fn: Callable[..., Any],
     kwargs: dict[str, Any],
     model: type[BaseModel],
     category: str,
     delay: float,
+    parameter_names: frozenset[str],
+    accepts_kwargs: bool,
 ) -> dict[str, Any] | None:
     body = kwargs.get("body")
     if category in {"validate", "mutate"}:
@@ -42,9 +43,9 @@ def _prepare(
         if new is not None:
             body = new
         if body is None:  # DELETE admission has no new desired object.
-            return _filter(fn, kwargs)
+            return _filter(parameter_names, accepts_kwargs, kwargs)
     if body is None:
-        return _filter(fn, kwargs)
+        return _filter(parameter_names, accepts_kwargs, kwargs)
     try:
         resource = validate_resource(model, body)
     except InvalidDesiredInputError as error:
@@ -60,19 +61,17 @@ def _prepare(
             respond_invalid(category, error, delay)
             return None
     payload = dict(kwargs)
-    signature = inspect.signature(fn)
-    if "resource" in signature.parameters or any(
-        param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
-    ):
+    if "resource" in parameter_names or accepts_kwargs:
         payload["resource"] = resource
-    return _filter(fn, payload)
+    return _filter(parameter_names, accepts_kwargs, payload)
 
 
-def _filter(fn: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
-    signature = inspect.signature(fn)
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+def _filter(
+    parameter_names: frozenset[str], accepts_kwargs: bool, kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    if accepts_kwargs:
         return kwargs
-    return {name: value for name, value in kwargs.items() if name in signature.parameters}
+    return {name: value for name, value in kwargs.items() if name in parameter_names}
 
 
 def _model_options(
@@ -98,7 +97,12 @@ def _register_function(
     retry_delay: float,
     strict_delete: bool,
 ) -> Callable[..., Any]:
-    _verify_delete(fn, model, category, strict_delete)
+    signature = inspect.signature(fn)
+    parameter_names = frozenset(signature.parameters)
+    accepts_kwargs = any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
+    )
+    _verify_delete(fn, model, category, strict_delete, parameter_names)
     effective_category = "update" if category == "delete" and strict_delete else category
     if inspect.iscoroutinefunction(fn):
         @functools.wraps(fn)
@@ -108,10 +112,12 @@ def _register_function(
                 resource = await context.wait_async(retry_delay)
                 if resource is None:
                     return None
-                return await fn(**_filter(fn, {
+                return await fn(**_filter(parameter_names, accepts_kwargs, {
                     **kwargs, "resource": resource, "resource_context": context,
                 }))
-            prepared = _prepare(fn, kwargs, model, effective_category, retry_delay)
+            prepared = _prepare(
+                kwargs, model, effective_category, retry_delay, parameter_names, accepts_kwargs,
+            )
             if prepared is not None:
                 return await fn(**prepared)
             return None
@@ -125,10 +131,12 @@ def _register_function(
                 resource = context.wait(retry_delay)
                 if resource is None:
                     return None
-                return fn(**_filter(fn, {
+                return fn(**_filter(parameter_names, accepts_kwargs, {
                     **kwargs, "resource": resource, "resource_context": context,
                 }))
-            prepared = _prepare(fn, kwargs, model, effective_category, retry_delay)
+            prepared = _prepare(
+                kwargs, model, effective_category, retry_delay, parameter_names, accepts_kwargs,
+            )
             if prepared is not None:
                 return fn(**prepared)
             return None
@@ -138,9 +146,13 @@ def _register_function(
 
 
 def _verify_delete(
-    fn: Callable[..., Any], model: type[BaseModel], category: str, strict_delete: bool,
+    fn: Callable[..., Any],
+    model: type[BaseModel],
+    category: str,
+    strict_delete: bool,
+    parameter_names: frozenset[str],
 ) -> None:
-    if category != "delete" or strict_delete or "resource" not in inspect.signature(fn).parameters:
+    if category != "delete" or strict_delete or "resource" not in parameter_names:
         return
     try:
         annotation = get_type_hints(fn).get("resource")

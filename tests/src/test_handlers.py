@@ -1,6 +1,8 @@
 """Exercise model adapters through Kopf's actual invocation path."""
 
 import asyncio
+import inspect
+from types import SimpleNamespace
 from typing import Literal, cast
 
 import kopf
@@ -9,6 +11,7 @@ from kopf._core.actions.invocation import invoke
 from pydantic import BaseModel
 
 import based_operators as tk
+import based_operators.handlers as handler_module
 
 
 class Spec(BaseModel):
@@ -45,6 +48,40 @@ def test_sync_kopf_invoke_no_kwargs_and_preserve_identity():
     assert getattr(handler.fn, "__wrapped__") is reconcile
     result = asyncio.run(invoke(handler.fn, kwargs={"body": BODY, "spec": BODY["spec"]}))
     assert result == "hi"
+
+
+def test_handler_signature_is_cached_at_registration(monkeypatch):
+    """Invocation reuses signature metadata computed during registration."""
+    registry = kopf.OperatorRegistry()
+    signature_calls = 0
+
+    def signature(fn):
+        nonlocal signature_calls
+        signature_calls += 1
+        return inspect.signature(fn)
+
+    monkeypatch.setattr(
+        handler_module,
+        "inspect",
+        SimpleNamespace(
+            signature=signature,
+            iscoroutinefunction=inspect.iscoroutinefunction,
+            Parameter=inspect.Parameter,
+        ),
+    )
+
+    @tk.on.create(model=Greeting, registry=registry)
+    def reconcile(resource: Greeting, spec: dict):
+        return resource.spec.greeting
+
+    handler = list(registry._changing.get_all_handlers())[0]
+    assert signature_calls == 1
+    monkeypatch.setattr(
+        handler_module,
+        "inspect",
+        SimpleNamespace(signature=lambda _: pytest.fail("signature inspected during invocation")),
+    )
+    assert handler.fn(body=BODY, spec=BODY["spec"]) == "hi"
 
 
 def test_async_invalid_retries_then_recovers():
