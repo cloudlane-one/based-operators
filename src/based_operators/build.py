@@ -602,6 +602,11 @@ def _generate_crds(
                 raise BuildError(f"{reference}: missing spec field")
             spec_type = _model_type(spec.annotation, f"{reference}.spec")
             status = model.model_fields.get("status")
+            if status is not None and status.is_required():
+                raise BuildError(
+                    f"{reference}.status: status must have a default because Kubernetes "
+                    "omits it on resource creation"
+                )
             status_type = _model_type(status.annotation, f"{reference}.status") if status else None
             _check_envelope_aliases(model, reference)
             seen: set[type[BaseModel]] = set()
