@@ -19,8 +19,10 @@ class InvalidDesiredInputError(Exception):
 
 def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
     """Validate desired spec separately from stale status; return a detached snapshot."""
+    from copy import deepcopy
+
     try:
-        return model.model_validate(dict(body))
+        return model.model_validate(deepcopy(dict(body)))
     except ValidationError as error:
         errors = error.errors(include_input=False)
         if errors and all(
@@ -28,7 +30,7 @@ def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
         ):
             # Status is observed, not desired. If stale status is invalid, still
             # reconcile the current spec when the status field has a safe default.
-            snapshot = dict(body)
+            snapshot = deepcopy(dict(body))
             snapshot.pop("status", None)
             try:
                 return model.model_validate(snapshot)
