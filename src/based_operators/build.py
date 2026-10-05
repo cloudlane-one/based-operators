@@ -33,6 +33,7 @@ class BuildError(ValueError):
 
 
 _MODEL_IMPORT_LOCK = threading.RLock()
+_MODEL_IMPORT_ROOTS: set[Path] = set()
 
 
 def _model_type(annotation: object, name: str) -> type[BaseModel]:
@@ -237,11 +238,17 @@ def _load_model(reference: str, root: Path) -> type[BaseModel]:
         raise BuildError(f"Invalid model reference {reference!r}; expected module:Class")
     with _MODEL_IMPORT_LOCK:
         original_sys_path = sys.path.copy()
+        project_roots = {root.resolve(), (root / "src").resolve()}
+        _MODEL_IMPORT_ROOTS.update(project_roots)
+        isolated_roots = _MODEL_IMPORT_ROOTS.copy()
+        _remove_project_modules(isolated_roots)
         sys.path[:0] = [str(root / "src"), str(root)]
         try:
+            importlib.invalidate_caches()
             module = importlib.import_module(module_name)
             model = getattr(module, class_name, None)
         except (ImportError, AttributeError) as exc:
+            _remove_project_modules(isolated_roots)
             raise BuildError(f"Cannot import {reference}: {exc}") from exc
         finally:
             sys.path[:] = original_sys_path
@@ -251,6 +258,28 @@ def _load_model(reference: str, root: Path) -> type[BaseModel]:
     if location is None or not Path(location).resolve().is_relative_to(root / "src"):
         raise BuildError(f"{reference}: model modules must resolve under the project's src/")
     return model
+
+
+def _remove_project_modules(roots: set[Path]) -> None:
+    """Remove cached modules imported from downstream project roots."""
+    for name, module in tuple(sys.modules.items()):
+        if _module_is_under_project(module, roots):
+            del sys.modules[name]
+
+
+def _module_is_under_project(module: object, roots: set[Path]) -> bool:
+    """Identify cached modules loaded from a downstream project."""
+    if not isinstance(module, types.ModuleType):
+        return False
+    locations = [getattr(module, "__file__", None)]
+    locations.extend(getattr(module, "__path__", ()) or ())
+    spec = getattr(module, "__spec__", None)
+    locations.append(getattr(spec, "origin", None))
+    return any(
+        location is not None
+        and any(Path(location).resolve().is_relative_to(root) for root in roots)
+        for location in locations
+    )
 
 
 def _read_config(root: Path) -> tuple[list[str], str]:

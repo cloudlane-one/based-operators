@@ -28,9 +28,16 @@ from based_operators.build import (
 from based_operators.cli import main
 
 
-def project(tmp_path: Path, *, models: str = '"sample:Widget"', fields: str = "value: int") -> Path:
+def project(
+    tmp_path: Path,
+    *,
+    models: str = '"sample:Widget"',
+    fields: str = "value: int",
+    clear_import_cache: bool = True,
+) -> Path:
     """Create a minimal isolated project with explicit model imports."""
-    sys.modules.pop("sample", None)
+    if clear_import_cache:
+        sys.modules.pop("sample", None)
     (tmp_path / "src").mkdir()
     (tmp_path / "app").mkdir()
     (tmp_path / "app" / "operator.py").write_text("import kopf\n")
@@ -116,6 +123,59 @@ def test_model_import_restores_sys_path(tmp_path: Path, monkeypatch: pytest.Monk
     _load_model("sample:Widget", root)
 
     assert sys.path == original_sys_path
+
+
+def test_build_isolates_consecutive_project_imports(tmp_path: Path) -> None:
+    """Consecutive builds isolate same-named project packages and their dependencies."""
+    package_name = "based_operators_fixture_models"
+    package_modules = (package_name, f"{package_name}.schema", f"{package_name}.shared")
+    for name in package_modules:
+        sys.modules.pop(name, None)
+
+    def configure_model(root: Path, value_type: str, value: str) -> None:
+        package = root / "src" / package_name
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "shared.py").write_text(f"VALUE = {value!r}\n")
+        (package / "schema.py").write_text(
+            "from pydantic import BaseModel\n"
+            "from .shared import VALUE\n"
+            "class Spec(BaseModel):\n"
+            f"    value: {value_type} = VALUE\n"
+            "class Widget(BaseModel):\n"
+            "    apiVersion: str = 'widgets.example.com/v1'\n"
+            "    kind: str = 'Widget'\n"
+            "    namespace: str = 'default'\n"
+            "    spec: Spec\n"
+        )
+        config = root / "pyproject.toml"
+        config.write_text(
+            config.read_text().replace('"sample:Widget"', f'"{package_name}.schema:Widget"')
+        )
+
+    try:
+        first_root = tmp_path / "first"
+        first_root.mkdir()
+        first = project(first_root)
+        configure_model(first, "int", "1")
+        build(first, first / "out", image="x")
+
+        second_root = tmp_path / "second"
+        second_root.mkdir()
+        second = project(second_root, clear_import_cache=False)
+        configure_model(second, "str", "fresh")
+        output = build(second, second / "out", image="x")
+
+        crd = json.loads(
+            (output / "helm/crds/widgets.widgets.example.com.yaml").read_text()
+        )
+        value_schema = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"][
+            "properties"
+        ]["spec"]["properties"]["value"]
+        assert value_schema["type"] == "string"
+    finally:
+        for name in package_modules:
+            sys.modules.pop(name, None)
 
 
 def test_project_root_model_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
