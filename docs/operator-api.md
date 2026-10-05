@@ -45,7 +45,7 @@ paused automatically. `resource_context.refresh()` validates the latest observed
 Kopf body; `resource_context.wait(delay)` and `await
 resource_context.wait_async(delay)` retry invalid input until corrected or
 stopped. Refresh at meaningful processing boundaries and keep business logic
-idempotent. `tk.patch_status(patch, status)` merges explicitly set JSON-compatible,
+idempotent. `tk.patch_status(patch, status)` recursively merges explicitly set JSON-compatible,
 alias-preserving status keys into a patch; an explicit `None` requests key deletion
 under Kubernetes merge-patch semantics. Kopf 1.44.6 defaults to
 `SmartProgressStorage`, which writes progress to annotations (and reads legacy

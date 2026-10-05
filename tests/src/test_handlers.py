@@ -151,6 +151,23 @@ def test_status_patch_alias_and_unset():
     assert patch == {"status": {"other": 3, "observedValue": None}}
 
 
+def test_status_patch_preserves_pending_nested_updates():
+    """Repeated status patches retain sibling keys and explicit null deletions."""
+
+    class Details(BaseModel):
+        first: str | None = None
+        second: str | None = None
+
+    class Status(BaseModel):
+        details: Details
+
+    patch = {"status": {"details": {"first": "old"}}}
+    tk.patch_status(patch, Status(details=Details(second="new")))
+    assert patch == {"status": {"details": {"first": "old", "second": "new"}}}
+    tk.patch_status(patch, Status(details=Details(first=None)))
+    assert patch == {"status": {"details": {"first": None, "second": "new"}}}
+
+
 def test_status_patch_rejects_non_dict_status():
     """Status merge reports malformed existing status patches clearly."""
 

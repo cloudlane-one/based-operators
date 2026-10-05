@@ -17,6 +17,14 @@ def patch_status(patch: Any, status: BaseModel) -> None:
     status_patch = patch.setdefault("status", {})
     if not isinstance(status_patch, dict):
         raise TypeError("patch['status'] must be a dict")
-    status_patch.update(status.model_dump(
-        mode="json", by_alias=True, exclude_unset=True,
-    ))
+    def merge(target: dict, updates: dict) -> None:
+        for key, value in updates.items():
+            if isinstance(value, dict) and isinstance(target.get(key), dict):
+                merge(target[key], value)
+            else:
+                target[key] = value
+
+    merge(
+        status_patch,
+        status.model_dump(mode="json", by_alias=True, exclude_unset=True),
+    )

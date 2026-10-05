@@ -276,7 +276,8 @@ def _module_is_under_project(module: object, roots: set[Path]) -> bool:
     locations = [getattr(module, "__file__", None)]
     locations.extend(getattr(module, "__path__", ()) or ())
     spec = getattr(module, "__spec__", None)
-    locations.append(getattr(spec, "origin", None))
+    if getattr(spec, "has_location", False):
+        locations.append(spec.origin)
     return any(
         location is not None
         and any(Path(location).resolve().is_relative_to(root) for root in roots)
@@ -360,16 +361,19 @@ def _dockerfile(handler: str) -> str:
 
 def _admission_templates(resources: list[tuple[str, str, str]]) -> str:
     """Render explicit Kopf handler-ID routes; Helm never guesses handler code."""
-    rules = "\n".join(
-        "          - apiGroups: " + json.dumps([group]) + "\n"
-        "            apiVersions: " + json.dumps([version]) + "\n"
-        "            resources: " + json.dumps([plural]) + "\n"
-        '            operations: ["CREATE", "UPDATE"]\n'
-        "            scope: Namespaced"
+    rules = " ".join(
+        json.dumps(f"{group}/{version}/{plural}") + " " + json.dumps(
+            "- apiGroups: " + json.dumps([group]) + "\n"
+            "  apiVersions: " + json.dumps([version]) + "\n"
+            "  resources: " + json.dumps([plural]) + "\n"
+            '  operations: ["CREATE", "UPDATE"]\n'
+            "  scope: Namespaced"
+        )
         for group, version, plural in sorted(resources)
     )
     prefix = """{{- if .Values.webhooks.enabled }}
 {{- $w := .Values.webhooks }}
+{{- $rules := dict RULES }}
 {{- if not $w.caBundle }}{{ fail "webhooks.caBundle (base64 PEM) is required" }}{{ end }}
 {{- if not (or $w.validating $w.mutating) }}
 {{- fail "Configure at least one webhook handler ID" }}
@@ -412,7 +416,7 @@ kind: CONFIGKIND
 metadata:
   name: {{ $.Release.Name }}-{{ $.Release.Namespace }}-TYPE
 webhooks:
-  {{- range $i, $id := $w.KIND }}
+  {{- range $i, $entry := $w.KIND }}
   - name: {{ printf "%d.%s.%s.svc" $i $.Release.Name $.Release.Namespace | quote }}
     admissionReviewVersions: ["v1"]
     sideEffects: None
@@ -423,14 +427,19 @@ webhooks:
       service:
         name: {{ $.Release.Name }}-webhook
         namespace: {{ $.Release.Namespace }}
-        path: {{ printf "/%s" $id | quote }}
+        path: {{ printf "/%s" $entry.id | quote }}
         port: 443
       caBundle: {{ $w.caBundle | quote }}
     namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: {{ $.Release.Namespace | quote }}
     rules:
-RULES
+      {{- if not $entry.resources }}{{ fail "Each webhook handler needs resources" }}{{ end }}
+      {{- range $resource := $entry.resources }}
+      {{- if not (hasKey $rules $resource) }}
+      {{- fail (printf "Unknown webhook resource %s" $resource) }}{{ end }}
+      {{ index $rules $resource | nindent 6 }}
+      {{- end }}
   {{- end }}
 {{- end }}
 """
@@ -440,14 +449,31 @@ RULES
     ):
         prefix += config.replace("$w.KIND", f"$w.{kind}").replace(
             "CONFIGKIND", configkind
-        ).replace("TYPE", kind).replace("RULES", rules)
-    return prefix + "{{- end }}\n"
+        ).replace("TYPE", kind)
+    return prefix.replace("RULES", rules) + "{{- end }}\n"
 
 
 def _chart(
     image: str, resources: list[tuple[str, str, str]],
 ) -> dict[str, str]:
     """Render namespace-scoped RBAC and a deliberately single-replica chart."""
+    handler_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["id", "resources"],
+        "properties": {
+            "id": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]+$"},
+            "resources": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": True,
+                "items": {
+                    "type": "string",
+                    "enum": [f"{group}/{version}/{plural}" for group, version, plural in resources],
+                },
+            },
+        },
+    }
     grouped = {
         group: sorted(
             {plural for resource_group, _, plural in resources if resource_group == group}
@@ -495,14 +521,8 @@ def _chart(
                             },
                             "tlsCrt": {"type": "string"},
                             "tlsKey": {"type": "string"},
-                            "validating": {
-                                "type": "array",
-                                "items": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]+$"},
-                            },
-                            "mutating": {
-                                "type": "array",
-                                "items": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]+$"},
-                            },
+                            "validating": {"type": "array", "items": handler_schema},
+                            "mutating": {"type": "array", "items": handler_schema},
                         },
                     },
                 },

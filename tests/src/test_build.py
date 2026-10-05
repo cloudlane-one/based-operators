@@ -209,6 +209,21 @@ def test_build_isolates_consecutive_project_imports(tmp_path: Path) -> None:
             sys.modules.pop(name, None)
 
 
+def test_build_preserves_non_filesystem_modules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cache cleanup must not evict built-in or frozen modules when cwd is the project."""
+    root = project(tmp_path)
+    monkeypatch.chdir(root)
+    builtin = sys.modules["sys"]
+    frozen = sys.modules["importlib._bootstrap"]
+    build(root, root / "out", image="x")
+
+    assert sys.modules["sys"] is builtin
+    assert sys.modules["importlib._bootstrap"] is frozen
+
+
 def test_project_root_model_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Root-level model modules cannot be imported by the generated container."""
     root = project(tmp_path)
@@ -241,8 +256,10 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "--set", "webhooks.caBundle=Y2E=",
         "--set", "webhooks.tlsCrt=certificate",
         "--set", "webhooks.tlsKey=privatekey",
-        "--set", "webhooks.validating[0]=validate-widget",
-        "--set", "webhooks.mutating[0]=mutate-widget",
+        "--set", "webhooks.validating[0].id=validate-widget",
+        "--set", "webhooks.validating[0].resources[0]=widgets.example.com/v1/widgets",
+        "--set", "webhooks.mutating[0].id=mutate-widget",
+        "--set", "webhooks.mutating[0].resources[0]=widgets.example.com/v1/widgets",
     ]
     enabled = subprocess.run(base + options, check=True, capture_output=True, text=True).stdout
     assert "kind: Secret" in enabled
@@ -270,7 +287,8 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "--set", "webhooks.enabled=true",
             "--set", "webhooks.caBundle=Y2E=",
             "--set", "webhooks.existingSecret=my-tls",
-            "--set", "webhooks.validating[0]=validate-widget",
+            "--set", "webhooks.validating[0].id=validate-widget",
+            "--set", "webhooks.validating[0].resources[0]=widgets.example.com/v1/widgets",
         ], check=True, capture_output=True, text=True,
     ).stdout
     assert "secretName: my-tls" in existing
@@ -280,6 +298,49 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
         capture_output=True, text=True,
     )
     assert invalid_ca.returncode != 0
+
+
+def test_webhook_handler_resource_rules(tmp_path: Path) -> None:
+    """A handler for Widget must not intercept Gadget admission requests."""
+    root = project(tmp_path, models='"sample:Widget", "sample:Gadget"')
+    sample = root / "src" / "sample.py"
+    sample.write_text(
+        sample.read_text()
+        + "class Gadget(BaseModel):\n"
+        + "    apiVersion: str = 'gadgets.example.com/v1'\n"
+        + "    kind: str = 'Gadget'\n"
+        + "    namespace: str = 'default'\n"
+        + "    spec: Spec\n"
+    )
+    output = build(root, root / "out", image="x")
+    if not shutil.which("helm"):
+        pytest.skip("Helm is not installed")
+    base = ["helm", "template", "sample", str(output / "helm"), "--namespace", "demo"]
+    options = [
+        "--set", "webhooks.enabled=true",
+        "--set", "webhooks.caBundle=Y2E=",
+        "--set", "webhooks.existingSecret=my-tls",
+        "--set", "webhooks.validating[0].id=validate-widget",
+        "--set", "webhooks.validating[0].resources[0]=widgets.example.com/v1/widgets",
+    ]
+    rendered = subprocess.run(base + options, check=True, capture_output=True, text=True).stdout
+    validation = next(
+        item for item in yaml.safe_load_all(rendered)
+        if item["kind"] == "ValidatingWebhookConfiguration"
+    )
+    assert validation["webhooks"][0]["rules"] == [{
+        "apiGroups": ["widgets.example.com"],
+        "apiVersions": ["v1"],
+        "resources": ["widgets"],
+        "operations": ["CREATE", "UPDATE"],
+        "scope": "Namespaced",
+    }]
+    unknown = subprocess.run(
+        base + options[:-1] + [
+            "--set", "webhooks.validating[0].resources[0]=gadgets.example.com/v1/unknown",
+        ], capture_output=True, text=True,
+    )
+    assert unknown.returncode != 0
 
 
 @pytest.mark.parametrize(
