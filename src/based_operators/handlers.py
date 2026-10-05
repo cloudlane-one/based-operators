@@ -38,7 +38,9 @@ def _prepare(
 ) -> dict[str, Any] | None:
     body = kwargs.get("body")
     if category in {"validate", "mutate"}:
-        body = kwargs.get("new") or body
+        new = kwargs.get("new")
+        if new is not None:
+            body = new
         if body is None:  # DELETE admission has no new desired object.
             return _filter(fn, kwargs)
     if body is None:
