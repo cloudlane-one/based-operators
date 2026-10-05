@@ -22,4 +22,17 @@ def configure_webhooks(settings: kopf.OperatorSettings, **kwargs: object) -> Non
     )
 
 
-runpy.run_path(os.environ["BASED_OPERATORS_HANDLER"])
+def _get_handler_path() -> str:
+    handler_path = os.environ.get("BASED_OPERATORS_HANDLER")
+    if not handler_path:
+        raise RuntimeError(
+            "Missing required environment variable: BASED_OPERATORS_HANDLER"
+        )
+    if not os.path.isfile(handler_path):
+        raise RuntimeError(
+            f"BASED_OPERATORS_HANDLER does not point to an existing file: {handler_path}"
+        )
+    return handler_path
+
+
+runpy.run_path(_get_handler_path())
