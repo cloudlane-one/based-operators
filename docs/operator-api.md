@@ -11,7 +11,7 @@ is the original Kopf call.
 | `on.delete` | Invalid desired spec injects `None` for `resource` and permits cleanup. Declare `resource: MyModel \| None`, or use `strict_delete=True` (which can block deletion). |
 | `on.daemon` | Wait for valid desired input before initial invocation; optionally request `resource_context` for live refresh. |
 | `on.event`, `on.index` | Invalid input skips invocation, returning `None` (Kopf does not retry events). |
-| `on.validate`, `on.mutate` | Invalid submitted input raises `AdmissionError(422)`; deletion with no new object passes through. Deployment requires a separately configured Kopf webhook server, Service and certificates. |
+| `on.validate`, `on.mutate` | Invalid submitted input raises `AdmissionError(422)`; deletion with no new object passes through. The generated chart can optionally deploy HTTPS admission; see [build artifacts](build.md). |
 | `on.startup`, `on.cleanup`, `on.login`, `on.probe`, `on.subhandler`, `on.register` | Unchanged Kopf functions; no resource-model input. |
 | `tk.daemon`, `tk.timer`, `tk.index`, `tk.register`, other top-level exports | Unchanged Kopf functions; use `tk.on.*` for model support. |
 

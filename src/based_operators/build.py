@@ -256,7 +256,7 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: CONFIGKIND
 metadata:
-  name: {{ $.Release.Name }}-TYPE
+  name: {{ $.Release.Name }}-{{ $.Release.Namespace }}-TYPE
 webhooks:
   {{- range $i, $id := $w.KIND }}
   - name: {{ printf "%d.%s.%s.svc" $i $.Release.Name $.Release.Namespace | quote }}
@@ -318,7 +318,13 @@ def _chart(
                         "properties": {
                             "enabled": {"type": "boolean"},
                             "existingSecret": {"type": "string"},
-                            "caBundle": {"type": "string"},
+                            "caBundle": {
+                                "type": "string",
+                                "pattern": (
+                                    "^([A-Za-z0-9+/]{4})*"
+                                    "([A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+                                ),
+                            },
                             "tlsCrt": {"type": "string"},
                             "tlsKey": {"type": "string"},
                             "validating": {

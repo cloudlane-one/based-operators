@@ -1,7 +1,7 @@
 """Exercise model adapters through Kopf's actual invocation path."""
 
 import asyncio
-from typing import Literal
+from typing import Literal, cast
 
 import kopf
 import pytest
@@ -42,7 +42,7 @@ def test_sync_kopf_invoke_no_kwargs_and_preserve_identity():
 
     handler = list(registry._changing.get_all_handlers())[0]
     assert handler.id == "greeting.create"
-    assert handler.fn.__wrapped__ is reconcile
+    assert getattr(handler.fn, "__wrapped__") is reconcile
     result = asyncio.run(invoke(handler.fn, kwargs={"body": BODY, "spec": BODY["spec"]}))
     assert result == "hi"
 
@@ -135,9 +135,9 @@ def test_daemon_waits_for_corrected_live_body():
     @tk.on.daemon(model=Greeting, registry=registry)
     def daemon(resource: Greeting, resource_context: tk.ResourceContext):
         assert resource.spec.greeting == "fixed"
-        assert resource_context.refresh().spec.greeting == "fixed"
+        assert cast(Greeting, resource_context.refresh()).spec.greeting == "fixed"
         body["spec"] = {"greeting": "updated"}
-        return resource_context.refresh().spec.greeting
+        return cast(Greeting, resource_context.refresh()).spec.greeting
 
     handler = list(registry._spawning.get_all_handlers())[0]
     assert asyncio.run(invoke(handler.fn, kwargs={"body": body, "stopped": stopped})) == "updated"
@@ -206,6 +206,6 @@ def test_stale_status_does_not_block_current_spec():
         status: Spec | None = None
 
     valid = validate_resource(WithStatus, {**BODY, "status": {"greeting": "observed"}})
-    assert valid.status.greeting == "observed"
+    assert cast(WithStatus, valid).status == Spec(greeting="observed")
     stale = validate_resource(WithStatus, {**BODY, "status": {"invalid": True}})
-    assert stale.status is None
+    assert cast(WithStatus, stale).status is None

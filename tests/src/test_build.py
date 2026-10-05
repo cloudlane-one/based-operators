@@ -122,6 +122,10 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "path: \"/mutate-widget\"" in enabled
     assert "BASED_OPERATORS_WEBHOOKS" in enabled
     assert "widgets.example.com" in enabled
+    for lint_args in ([], options):
+        subprocess.run(
+            ["helm", "lint", chart, *lint_args], check=True, capture_output=True, text=True
+        )
     missing = subprocess.run(
         base + ["--set", "webhooks.enabled=true"], capture_output=True, text=True
     )
@@ -136,6 +140,11 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
     ).stdout
     assert "secretName: my-tls" in existing
     assert "kind: Secret" not in existing
+    invalid_ca = subprocess.run(
+        base + options[:2] + ["--set", "webhooks.caBundle=not base64"],
+        capture_output=True, text=True,
+    )
+    assert invalid_ca.returncode != 0
 
 
 @pytest.mark.parametrize(
