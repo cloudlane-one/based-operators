@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from based_operators.build import BuildError, build
+from based_operators.build import BuildError, _load_model, build
 from based_operators.cli import main
 
 
@@ -92,6 +92,19 @@ def test_build_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         assert 'image: "example/operator:1"' in rendered
     with pytest.raises(BuildError, match="already exists"):
         build(root, output, image="example/operator:1")
+
+
+def test_model_import_restores_sys_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A model module cannot leave process-wide import path changes behind."""
+    root = project(tmp_path)
+    monkeypatch.syspath_prepend(str(root))
+    sample = root / "sample.py"
+    sample.write_text("import sys\nsys.path.insert(0, 'unexpected-path')\n" + sample.read_text())
+    original_sys_path = sys.path.copy()
+
+    _load_model("sample:Widget", root)
+
+    assert sys.path == original_sys_path
 
 
 def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

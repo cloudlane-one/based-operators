@@ -10,6 +10,7 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
 import tomllib
 import types
 from collections.abc import Mapping
@@ -29,6 +30,9 @@ from based_operators.metadata import resolve_metadata
 
 class BuildError(ValueError):
     """Invalid build configuration or unsupported resource schema."""
+
+
+_MODEL_IMPORT_LOCK = threading.RLock()
 
 
 def _model_type(annotation: object, name: str) -> type[BaseModel]:
@@ -114,14 +118,16 @@ def _load_model(reference: str, root: Path) -> type[BaseModel]:
         or not class_name.isidentifier()
     ):
         raise BuildError(f"Invalid model reference {reference!r}; expected module:Class")
-    sys.path[:0] = [str(root / "src"), str(root)]
-    try:
-        module = importlib.import_module(module_name)
-        model = getattr(module, class_name, None)
-    except (ImportError, AttributeError) as exc:
-        raise BuildError(f"Cannot import {reference}: {exc}") from exc
-    finally:
-        del sys.path[:2]
+    with _MODEL_IMPORT_LOCK:
+        original_sys_path = sys.path.copy()
+        sys.path[:0] = [str(root / "src"), str(root)]
+        try:
+            module = importlib.import_module(module_name)
+            model = getattr(module, class_name, None)
+        except (ImportError, AttributeError) as exc:
+            raise BuildError(f"Cannot import {reference}: {exc}") from exc
+        finally:
+            sys.path[:] = original_sys_path
     if not isinstance(model, type) or not issubclass(model, BaseModel):
         raise BuildError(f"{reference}: expected a Pydantic BaseModel subclass")
     location = getattr(module, "__file__", None)
