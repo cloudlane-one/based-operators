@@ -35,10 +35,9 @@ def _prepare(
     body = kwargs.get("body")
     if category in {"validate", "mutate"}:
         new = kwargs.get("new")
-        if new is not None:
-            body = new
-        if body is None:  # DELETE admission has no new desired object.
+        if new is None:  # DELETE admission has no new desired object.
             return _filter(parameter_names, accepts_kwargs, kwargs)
+        body = new
     if body is None:
         return _filter(parameter_names, accepts_kwargs, kwargs)
     try:
