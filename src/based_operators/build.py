@@ -23,7 +23,6 @@ from kdantic.cli import _make_version_block, build_crd_object
 from kdantic.helpers.schema import build_k8s_model_schema
 from kdantic.helpers.settings import Settings
 from pydantic import BaseModel
-from pydantic_core import PydanticUndefined
 
 from based_operators.metadata import resolve_metadata
 
@@ -99,7 +98,7 @@ def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
         full_name = f"{model.__name__}.{name}"
         _check_type(field.annotation, full_name, seen)
         default = field.get_default()
-        if default is not PydanticUndefined and default is not None:
+        if not field.is_required() and default is not None:
             try:
                 json.dumps(default, allow_nan=False)
             except (TypeError, ValueError) as exc:
