@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from based_operators.build import BuildError, build
 from based_operators.cli import main
@@ -121,7 +122,11 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "path: \"/validate-widget\"" in enabled
     assert "path: \"/mutate-widget\"" in enabled
     assert "BASED_OPERATORS_WEBHOOKS" in enabled
-    assert "widgets.example.com" in enabled
+    webhook_docs = list(yaml.safe_load_all(enabled))
+    validation = next(
+        item for item in webhook_docs if item["kind"] == "ValidatingWebhookConfiguration"
+    )
+    assert validation["webhooks"][0]["rules"][0]["apiGroups"] == ["widgets.example.com"]
     for lint_args in ([], options):
         subprocess.run(
             ["helm", "lint", chart, *lint_args], check=True, capture_output=True, text=True
