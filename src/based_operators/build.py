@@ -56,24 +56,34 @@ def _check_container(
     if origin is list:
         if len(args) != 1:
             raise BuildError(f"{name}: lists must specify an item type")
-        _check_type(args[0], name, seen)
+        _check_type(args[0], name, seen, allow_none=False)
     else:
         if len(args) != 2 or args[0] is not str:
             raise BuildError(f"{name}: maps require string keys and an explicit value type")
-        _check_type(args[1], name, seen)
+        _check_type(args[1], name, seen, allow_none=False)
 
 
-def _check_type(annotation: object, name: str, seen: set[type[BaseModel]]) -> None:
+def _check_type(
+    annotation: object,
+    name: str,
+    seen: set[type[BaseModel]],
+    *,
+    allow_none: bool = True,
+) -> None:
     """Reject annotations kdantic would coerce to string or silently discard."""
     origin = get_origin(annotation)
     args = get_args(annotation)
     if origin is Annotated:
-        _check_type(args[0], name, seen)
+        _check_type(args[0], name, seen, allow_none=allow_none)
     elif origin in (Union, types.UnionType):
         members = [arg for arg in args if arg is not type(None)]
         if len(members) != 1:
             raise BuildError(f"{name}: unsupported union {annotation}")
-        _check_type(members[0], name, seen)
+        if not allow_none and len(members) != len(args):
+            raise BuildError(f"{name}: nullable collection members are unsupported")
+        _check_type(members[0], name, seen, allow_none=allow_none)
+    elif annotation is type(None) and not allow_none:
+        raise BuildError(f"{name}: nullable collection members are unsupported")
     elif origin is Literal:
         if not args or not all(isinstance(arg, str) for arg in args):
             raise BuildError(f"{name}: only string Literal values are supported")
