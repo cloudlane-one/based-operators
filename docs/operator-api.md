@@ -1,8 +1,9 @@
 # Operator API and compatibility
 
-`import based_operators as tk` exposes Kopf 1.44.6's top-level public exports,
-and `tk.upstream` is the unmodified Kopf module. `tk.on` delegates all registration
-to Kopf. Without `model=`, registration is the original Kopf call.
+`import based_operators as tk` exposes Kopf 1.44.6's top-level public exports.
+Downstream projects can also `import kopf` directly for the unmodified API.
+`tk.on` delegates all registration to Kopf. Without `model=`, registration
+is the original Kopf call.
 
 | Kopf decorators | Model-aware behavior |
 | --- | --- |

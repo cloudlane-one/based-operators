@@ -66,6 +66,10 @@ def test_build_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     cmd = json.loads(dockerfile.split("CMD ", 1)[1])
     assert cmd[:2] == ["python", "-c"]
     assert "os.execvp" in cmd[2] and "POD_NAMESPACE" in cmd[2]
+    assert "--liveness=http://0.0.0.0:8080/healthz" in cmd[2]
+    assert "--module" in cmd[2] and "based_operators.runtime" in cmd[2]
+    workload = (output / "helm/templates/operator.yaml").read_text()
+    assert "livenessProbe:" in workload and "path: /healthz" in workload
     assert '"example/operator:1"' in (output / "helm/values.yaml").read_text()
     schema = json.loads((output / "helm/values.schema.json").read_text())
     assert schema["required"] == ["image"]
@@ -86,6 +90,52 @@ def test_build_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         assert 'image: "example/operator:1"' in rendered
     with pytest.raises(BuildError, match="already exists"):
         build(root, output, image="example/operator:1")
+
+
+def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Helm deploys TLS and per-handler admission routes only when opted in."""
+    root = project(tmp_path)
+    monkeypatch.syspath_prepend(str(root))
+    output = build(root, root / "out", image="example/operator:1")
+    if not shutil.which("helm"):
+        pytest.skip("Helm is not installed")
+    chart = str(output / "helm")
+    base = ["helm", "template", "sample", chart, "--namespace", "demo"]
+    default = subprocess.run(base, check=True, capture_output=True, text=True).stdout
+    assert "livenessProbe:" in default
+    assert "kind: ValidatingWebhookConfiguration" not in default
+    assert "kind: Service\n" not in default
+    options = [
+        "--set", "webhooks.enabled=true",
+        "--set", "webhooks.caBundle=Y2E=",
+        "--set", "webhooks.tlsCrt=certificate",
+        "--set", "webhooks.tlsKey=privatekey",
+        "--set", "webhooks.validating[0]=validate-widget",
+        "--set", "webhooks.mutating[0]=mutate-widget",
+    ]
+    enabled = subprocess.run(base + options, check=True, capture_output=True, text=True).stdout
+    assert "kind: Secret" in enabled
+    assert "kind: Service" in enabled
+    assert "kind: ValidatingWebhookConfiguration" in enabled
+    assert "kind: MutatingWebhookConfiguration" in enabled
+    assert "path: \"/validate-widget\"" in enabled
+    assert "path: \"/mutate-widget\"" in enabled
+    assert "BASED_OPERATORS_WEBHOOKS" in enabled
+    assert "widgets.example.com" in enabled
+    missing = subprocess.run(
+        base + ["--set", "webhooks.enabled=true"], capture_output=True, text=True
+    )
+    assert missing.returncode != 0
+    existing = subprocess.run(
+        base + [
+            "--set", "webhooks.enabled=true",
+            "--set", "webhooks.caBundle=Y2E=",
+            "--set", "webhooks.existingSecret=my-tls",
+            "--set", "webhooks.validating[0]=validate-widget",
+        ], check=True, capture_output=True, text=True,
+    ).stdout
+    assert "secretName: my-tls" in existing
+    assert "kind: Secret" not in existing
 
 
 @pytest.mark.parametrize(

@@ -194,7 +194,7 @@ def test_admission_invalid_rejected(category: str):
 def test_kopf_public_api_inventory_is_reexported():
     """Keep Kopf's declared public exports available through the facade."""
     assert set(kopf.__all__) <= set(dir(tk))
-    assert tk.upstream is kopf
+    assert not hasattr(tk, "upstream")
     assert tk.Patch is kopf.Patch
 
 

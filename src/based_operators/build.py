@@ -177,7 +177,9 @@ def _dockerfile(handler: str) -> str:
     launcher = (
         "import os; os.execvp('kopf', "
         "['kopf', 'run', '--standalone', '--namespace', "
-        f"os.environ['POD_NAMESPACE'], {handler!r}])"
+        "os.environ['POD_NAMESPACE'], "
+        "'--liveness=http://0.0.0.0:8080/healthz', "
+        "'--module', 'based_operators.runtime'])"
     )
     return (
         "FROM python:3.13-slim AS build\n"
@@ -194,29 +196,142 @@ def _dockerfile(handler: str) -> str:
         "COPY --from=build --chown=operator:operator /operator/.venv/ ./.venv/\n"
         "COPY --from=build --chown=operator:operator /operator/src/ ./src/\n"
         "COPY --from=build --chown=operator:operator /operator/app/ ./app/\n"
-        'ENV PATH="/operator/.venv/bin:$PATH" PYTHONPATH="/operator/src"\n'
+        'ENV PATH="/operator/.venv/bin:$PATH" PYTHONPATH="/operator/src" '
+        f'BASED_OPERATORS_HANDLER="{handler}"\n'
+        "EXPOSE 8080\n"
         "USER operator\n"
         f"CMD {json.dumps(['python', '-c', launcher])}\n"
     )
 
 
-def _chart(image: str, resources: list[tuple[str, str]]) -> dict[str, str]:
+def _admission_templates(resources: list[tuple[str, str, str]]) -> str:
+    """Render explicit Kopf handler-ID routes; Helm never guesses handler code."""
+    rules = "\n".join(
+        "          - apiGroups: " + json.dumps([group]) + "\n"
+        "            apiVersions: " + json.dumps([version]) + "\n"
+        "            resources: " + json.dumps([plural]) + "\n"
+        '            operations: ["CREATE", "UPDATE"]\n'
+        "            scope: Namespaced"
+        for group, version, plural in sorted(resources)
+    )
+    prefix = """{{- if .Values.webhooks.enabled }}
+{{- $w := .Values.webhooks }}
+{{- if not $w.caBundle }}{{ fail "webhooks.caBundle (base64 PEM) is required" }}{{ end }}
+{{- if not (or $w.validating $w.mutating) }}
+{{- fail "Configure at least one webhook handler ID" }}
+{{- end }}
+{{- if and $w.existingSecret (or $w.tlsCrt $w.tlsKey) }}
+{{- fail "Use an existing TLS Secret or supplied certificate/key, not both" }}
+{{- end }}
+{{- if and (not $w.existingSecret) (or (not $w.tlsCrt) (not $w.tlsKey)) }}
+{{- fail "Supply a TLS Secret or tlsCrt and tlsKey" }}
+{{- end }}
+{{- if not $w.existingSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Release.Name }}-webhook
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $w.tlsCrt | b64enc | quote }}
+  tls.key: {{ $w.tlsKey | b64enc | quote }}
+  ca.crt: {{ $w.caBundle | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-webhook
+spec:
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: webhook
+"""
+    config = """
+{{- if $w.KIND }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: CONFIGKIND
+metadata:
+  name: {{ $.Release.Name }}-TYPE
+webhooks:
+  {{- range $i, $id := $w.KIND }}
+  - name: {{ printf "%d.%s.%s.svc" $i $.Release.Name $.Release.Namespace | quote }}
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    timeoutSeconds: 10
+    clientConfig:
+      service:
+        name: {{ $.Release.Name }}-webhook
+        namespace: {{ $.Release.Namespace }}
+        path: {{ printf "/%s" $id | quote }}
+        port: 443
+      caBundle: {{ $w.caBundle | quote }}
+    rules:
+RULES
+  {{- end }}
+{{- end }}
+"""
+    for kind, configkind in (
+        ("validating", "ValidatingWebhookConfiguration"),
+        ("mutating", "MutatingWebhookConfiguration"),
+    ):
+        prefix += config.replace("$w.KIND", f"$w.{kind}").replace(
+            "CONFIGKIND", configkind
+        ).replace("TYPE", kind).replace("RULES", rules)
+    return prefix + "{{- end }}\n"
+
+
+def _chart(
+    image: str, resources: list[tuple[str, str, str]],
+) -> dict[str, str]:
     """Render namespace-scoped RBAC and a deliberately single-replica chart."""
-    names = sorted({plural for _, plural in resources})
-    groups = sorted({group for group, _ in resources})
+    names = sorted({plural for _, _, plural in resources})
+    groups = sorted({group for group, _, _ in resources})
     resource_list = json.dumps(names)
     group_list = json.dumps(groups)
     release = "{{ .Release.Name }}"
+    admission = _admission_templates(resources)
     return {
         "Chart.yaml": "apiVersion: v2\nname: based-operator\nversion: 0.1.0\ntype: application\n",
-        "values.yaml": f"image: {json.dumps(image)}\n",
+        "values.yaml": (
+            f"image: {json.dumps(image)}\n"
+            "webhooks:\n  enabled: false\n  existingSecret: \"\"\n"
+            "  caBundle: \"\"\n  tlsCrt: \"\"\n  tlsKey: \"\"\n"
+            "  validating: []\n  mutating: []\n"
+        ),
         "values.schema.json": json.dumps(
             {
                 "$schema": "http://json-schema.org/draft-07/schema#",
                 "type": "object",
                 "additionalProperties": False,
                 "required": ["image"],
-                "properties": {"image": {"type": "string", "minLength": 1}},
+                "properties": {
+                    "image": {"type": "string", "minLength": 1},
+                    "webhooks": {
+                        "type": "object", "additionalProperties": False,
+                        "properties": {
+                            "enabled": {"type": "boolean"},
+                            "existingSecret": {"type": "string"},
+                            "caBundle": {"type": "string"},
+                            "tlsCrt": {"type": "string"},
+                            "tlsKey": {"type": "string"},
+                            "validating": {
+                                "type": "array",
+                                "items": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]+$"},
+                            },
+                            "mutating": {
+                                "type": "array",
+                                "items": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]+$"},
+                            },
+                        },
+                    },
+                },
             },
             indent=2,
             sort_keys=True,
@@ -230,6 +345,7 @@ def _chart(image: str, resources: list[tuple[str, str]]) -> dict[str, str]:
             "the release namespace; it does not provide HA. CRDs in `crds/` "
             "are installed on first install but Helm does not upgrade or remove them.\n"
         ),
+        "templates/webhooks.yaml": admission,
         "templates/operator.yaml": f"""apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -284,21 +400,59 @@ spec:
         - name: operator
           image: {{{{ .Values.image | quote }}}}
           imagePullPolicy: IfNotPresent
+          ports:
+            - name: health
+              containerPort: 8080
+            {{{{- if .Values.webhooks.enabled }}}}
+            - name: webhook
+              containerPort: 9443
+            {{{{- end }}}}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 20
+            periodSeconds: 10
           env:
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{{{- if .Values.webhooks.enabled }}}}
+            - name: BASED_OPERATORS_WEBHOOKS
+              value: "true"
+            {{{{- end }}}}
+          {{{{- if .Values.webhooks.enabled }}}}
+          volumeMounts:
+            - name: webhook-tls
+              mountPath: /etc/operator-webhook
+              readOnly: true
+          {{{{- end }}}}
+      {{{{- if .Values.webhooks.enabled }}}}
+      volumes:
+        - name: webhook-tls
+          secret:
+            secretName: {{{{ default
+              (printf "%s-webhook" .Release.Name)
+              .Values.webhooks.existingSecret }}}}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+      {{{{- end }}}}
 """,
     }
 
 
 def _generate_crds(
     root: Path, references: list[str]
-) -> tuple[dict[str, dict], list[tuple[str, str]]]:
+) -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
     """Validate each model and build its manifest before writing anything."""
     crds: dict[str, dict] = {}
-    resources: list[tuple[str, str]] = []
+    resources: list[tuple[str, str, str]] = []
     with _kdantic_defaults():
         for reference in references:
             model = _load_model(reference, root)
@@ -326,7 +480,7 @@ def _generate_crds(
             crds[key] = build_crd_object(
                 meta, _make_version_block(meta, spec_type, status_type, {})
             )
-            resources.append((meta.group, meta.names.plural))
+            resources.append((meta.group, meta.version, meta.names.plural))
     return crds, resources
 
 
