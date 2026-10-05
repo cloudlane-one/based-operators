@@ -7,7 +7,9 @@ from based_operators.handlers import on
 from based_operators.daemon import ResourceContext
 from based_operators.status import patch_status
 
-__all__ = [name for name in dir(kopf) if not name.startswith("_")] + [
-    "on", "patch_status", "ResourceContext",
-]
+_kopf_exports = list(getattr(kopf, "__all__", ()))
+_extra_exports = ["on", "patch_status", "ResourceContext"]
+__all__ = [name for name in _kopf_exports + _extra_exports if name in globals()]
+del _kopf_exports
+del _extra_exports
 del kopf
