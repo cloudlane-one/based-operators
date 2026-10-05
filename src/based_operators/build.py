@@ -151,7 +151,9 @@ def _normalize_model_required(model: type[BaseModel], schema: dict) -> None:
         return
     required = []
     for name, field in model.model_fields.items():
-        serialized_name = field.serialization_alias or name
+        serialized_name = (
+            field.serialization_alias if isinstance(field.serialization_alias, str) else name
+        )
         field_schema = properties.get(serialized_name)
         if field_schema is not None:
             if field.is_required():

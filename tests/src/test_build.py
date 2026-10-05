@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import AliasPath, BaseModel, Field
 
-from based_operators.build import BuildError, _load_model, build
+from based_operators.build import BuildError, _load_model, _normalize_model_required, build
 from based_operators.cli import main
 
 
@@ -328,3 +329,14 @@ def test_required_fields_recurse_with_serialized_names(
     assert schema["required"] == ["direct_value", "serializedName", "child", "children"]
     assert schema["properties"]["child"]["required"] == ["nested_value"]
     assert schema["properties"]["children"]["items"]["required"] == ["nested_value"]
+
+
+def test_required_fields_fall_back_for_non_string_serialization_alias() -> None:
+    """Use the field name when a serialization alias is not a string."""
+
+    class Model(BaseModel):
+        value: int = Field(serialization_alias=AliasPath("value"))
+
+    schema = {"properties": {"value": {"type": "integer"}}}
+    _normalize_model_required(Model, schema)
+    assert schema["required"] == ["value"]
