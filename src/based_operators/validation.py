@@ -30,8 +30,9 @@ def validate_resource(model: type[T], body: dict[str, Any]) -> T:
     try:
         return model.model_validate(snapshot)
     except ValidationError as error:
-        if not error.errors() or any(
-            details["loc"][0] != "status" for details in error.errors()
+        errs = error.errors()
+        if not errs or any(
+            not (loc := details.get("loc")) or loc[0] != "status" for details in errs
         ):
             raise
         # Status is observed, not desired. If stale status is invalid, still
