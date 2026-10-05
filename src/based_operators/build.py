@@ -122,6 +122,48 @@ def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
         seen.remove(model)
 
 
+def _normalize_nested_required(annotation: object, schema: dict) -> None:
+    """Normalize required fields in nested model schemas, including container items."""
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if origin is Annotated:
+        _normalize_nested_required(args[0], schema)
+    elif origin in (Union, types.UnionType):
+        members = [arg for arg in args if arg is not type(None)]
+        if len(members) == 1:
+            _normalize_nested_required(members[0], schema)
+    elif origin is list and args:
+        items = schema.get("items")
+        if isinstance(items, dict):
+            _normalize_nested_required(args[0], items)
+    elif origin in (dict, Mapping) and len(args) == 2:
+        values = schema.get("additionalProperties")
+        if isinstance(values, dict):
+            _normalize_nested_required(args[1], values)
+    elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        _normalize_model_required(annotation, schema)
+
+
+def _normalize_model_required(model: type[BaseModel], schema: dict) -> None:
+    """Set required property names from Pydantic fields throughout a payload schema."""
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return
+    required = []
+    for name, field in model.model_fields.items():
+        serialized_name = field.serialization_alias or name
+        field_schema = properties.get(serialized_name)
+        if field_schema is not None:
+            if field.is_required():
+                required.append(serialized_name)
+            if isinstance(field_schema, dict):
+                _normalize_nested_required(field.annotation, field_schema)
+    if required:
+        schema["required"] = required
+    else:
+        schema.pop("required", None)
+
+
 def _load_model(reference: str, root: Path) -> type[BaseModel]:
     """Import exactly one model class rather than scanning a module."""
     module_name, sep, class_name = reference.partition(":")
@@ -505,9 +547,14 @@ def _generate_crds(
             if key in crds:
                 raise BuildError(f"Duplicate CRD {key}")
             build_k8s_model_schema(spec_type, {})
-            crds[key] = build_crd_object(
-                meta, _make_version_block(meta, spec_type, status_type, {})
-            )
+            version_block = _make_version_block(meta, spec_type, status_type, {})
+            schema = version_block["schema"]["openAPIV3Schema"]
+            _normalize_model_required(spec_type, schema["properties"]["spec"])
+            if status_type:
+                _normalize_model_required(status_type, schema["properties"]["status"])
+            if spec.is_required():
+                schema["required"] = ["spec"]
+            crds[key] = build_crd_object(meta, version_block)
             resources.append((meta.group, meta.version, meta.names.plural))
     return crds, resources
 

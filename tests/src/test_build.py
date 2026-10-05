@@ -284,15 +284,47 @@ def test_reject_lossy_schemas(
 
 
 def test_required_and_default_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Check that kdantic emits required, default and nullable properties accurately."""
+    """Check that payload and envelope requiredness follows Pydantic fields."""
     root = project(
         tmp_path,
-        fields="value: int\n    label: str = 'ready'\n    optional: int | None = None",
+        fields="value: int | None\n    label: str = 'ready'\n    optional: int | None = None",
     )
     monkeypatch.syspath_prepend(str(root))
     output = build(root, root / "out", image="x")
     crd = json.loads((output / "helm/crds/widgets.widgets.example.com.yaml").read_text())
-    spec = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]
+    schema = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]
+    spec = schema["properties"]["spec"]
     assert spec["required"] == ["value"]
     assert spec["properties"]["label"]["default"] == "ready"
     assert spec["properties"]["optional"]["nullable"] is True
+    assert schema["required"] == ["spec"]
+
+
+def test_required_fields_recurse_with_serialized_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Normalize nullable required fields in nested and container schemas."""
+    root = project(tmp_path)
+    (root / "src" / "sample.py").write_text(
+        "from pydantic import BaseModel, Field\n"
+        "class Child(BaseModel):\n"
+        "    nested_value: str | None\n"
+        "    defaulted: int = 1\n"
+        "class Spec(BaseModel):\n"
+        "    direct_value: int | None\n"
+        "    renamed: str | None = Field(serialization_alias='serializedName')\n"
+        "    child: Child\n"
+        "    children: list[Child]\n"
+        "class Widget(BaseModel):\n"
+        "    apiVersion: str = 'widgets.example.com/v1'\n"
+        "    kind: str = 'Widget'\n"
+        "    namespace: str = 'default'\n"
+        "    spec: Spec\n"
+    )
+    monkeypatch.syspath_prepend(str(root))
+    output = build(root, root / "out", image="x")
+    crd = json.loads((output / "helm/crds/widgets.widgets.example.com.yaml").read_text())
+    schema = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]
+    assert schema["required"] == ["direct_value", "serializedName", "child", "children"]
+    assert schema["properties"]["child"]["required"] == ["nested_value"]
+    assert schema["properties"]["children"]["items"]["required"] == ["nested_value"]
