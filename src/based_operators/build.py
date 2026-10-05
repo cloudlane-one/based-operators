@@ -291,6 +291,9 @@ webhooks:
         path: {{ printf "/%s" $id | quote }}
         port: 443
       caBundle: {{ $w.caBundle | quote }}
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ $.Release.Namespace | quote }}
     rules:
 RULES
   {{- end }}
