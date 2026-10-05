@@ -27,6 +27,11 @@ jobs:
       - name: Run Pyright
         run: uv run pyright .
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v5.0.1
+        with:
+          version: v3.18.3
+
       - name: Run Pytest
         run: uv run pytest tests
         env:
