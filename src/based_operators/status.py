@@ -12,6 +12,9 @@ def patch_status(patch: Any, status: BaseModel) -> None:
     """
     if not isinstance(status, BaseModel):
         raise TypeError("status must be a Pydantic model")
-    patch.setdefault("status", {}).update(status.model_dump(
+    status_patch = patch.setdefault("status", {})
+    if not isinstance(status_patch, dict):
+        raise TypeError("patch['status'] must be a dict")
+    status_patch.update(status.model_dump(
         mode="json", by_alias=True, exclude_unset=True,
     ))
