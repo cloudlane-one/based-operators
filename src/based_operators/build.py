@@ -549,6 +549,16 @@ def _generate_crds(
             build_k8s_model_schema(spec_type, {})
             version_block = _make_version_block(meta, spec_type, status_type, {})
             schema = version_block["schema"]["openAPIV3Schema"]
+            for name, field in (("spec", spec), ("status", status)):
+                if field is None:
+                    continue
+                annotation = field.annotation
+                while get_origin(annotation) is Annotated:
+                    annotation = get_args(annotation)[0]
+                if type(None) in get_args(annotation):
+                    schema["properties"][name] = {
+                        **schema["properties"][name], "nullable": True,
+                    }
             _normalize_model_required(spec_type, schema["properties"]["spec"])
             if status_type:
                 _normalize_model_required(status_type, schema["properties"]["status"])
