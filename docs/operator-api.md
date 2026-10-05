@@ -30,8 +30,9 @@ handler are injected if it does not accept `**kwargs`. Explicit `model=` works
 without annotation inspection (except optional deletion fallback). No automatic
 annotation-only inference is provided.
 
-The spec field is validated independently, then the full resource minus stale
-status is validated. A failure outside `spec` remains an ordinary validation
+The spec field is validated independently, then the full resource is validated;
+an invalid observed status is ignored if the model permits omitting status.
+A failure outside `spec` and `status` remains an ordinary validation
 exception, not a retriable desired-spec error. Kopf's retry limits and timeouts
 still apply: if configured, they can prevent a handler from recovering after a
 correction. Business-logic exceptions are passed through unchanged.
@@ -45,8 +46,9 @@ resource_context.wait_async(delay)` retry invalid input until corrected or
 stopped. Refresh at meaningful processing boundaries and keep business logic
 idempotent. `tk.patch_status(patch, status)` merges explicitly set JSON-compatible,
 alias-preserving status keys into a patch; an explicit `None` requests key deletion
-under Kubernetes merge-patch semantics. Kopf's progress storage is not changed
-automatically; configure annotation-based progress storage for typed status models.
+under Kubernetes merge-patch semantics. Kopf 1.44.6 defaults to
+`SmartProgressStorage`, which writes progress to annotations (and reads legacy
+status); this package does not overwrite explicit user storage settings.
 
 Supported runtime: Python `>=3.13,<4`, Kopf `1.44.6`, Pydantic `2.13.5`,
 kdantic `0.1.0` pinned to Git commit

@@ -24,11 +24,18 @@ def validate_resource(model: type[BaseModel], body: dict[str, Any]) -> BaseModel
         TypeAdapter(spec_field.annotation).validate_python(body.get("spec"))
     except ValidationError as error:
         raise InvalidDesiredInputError(error.errors(include_input=False)) from error
-    # Status is not desired input. Kubernetes bookkeeping and historical status
-    # must not prevent reconciliation of the current spec.
     snapshot = dict(body)
-    snapshot.pop("status", None)
-    return model.model_validate(snapshot)
+    try:
+        return model.model_validate(snapshot)
+    except ValidationError as error:
+        if not error.errors() or any(
+            details["loc"][0] != "status" for details in error.errors()
+        ):
+            raise
+        # Status is observed, not desired. If stale status is invalid, still
+        # reconcile the current spec when the status field has a safe default.
+        snapshot.pop("status", None)
+        return model.model_validate(snapshot)
 
 
 def respond_invalid(category: str, error: InvalidDesiredInputError, delay: float) -> None:

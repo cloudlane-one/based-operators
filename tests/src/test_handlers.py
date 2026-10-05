@@ -142,3 +142,70 @@ def test_daemon_waits_for_corrected_live_body():
     handler = list(registry._spawning.get_all_handlers())[0]
     assert asyncio.run(invoke(handler.fn, kwargs={"body": body, "stopped": stopped})) == "updated"
     assert stopped.waits == 1
+
+
+def test_field_scoped_old_new_stay_raw():
+    """Field selection old/new retain Kopf's original scalar values."""
+    registry = kopf.OperatorRegistry()
+
+    @tk.on.field(model=Greeting, field="spec.greeting", registry=registry)
+    def changed(resource: Greeting, old: str, new: str):
+        return resource.spec.greeting, old, new
+
+    handler = list(registry._changing.get_all_handlers())[0]
+    assert asyncio.run(invoke(handler.fn, kwargs={
+        "body": BODY, "old": "old", "new": "hi", "diff": (),
+    })) == ("hi", "old", "hi")
+
+
+@pytest.mark.parametrize("category", ["event", "index"])
+def test_nonretry_handlers_skip_invalid_input(category: str):
+    """Invalid watch/index input is skipped without temporary retry errors."""
+    registry = kopf.OperatorRegistry()
+    calls = []
+
+    @getattr(tk.on, category)(model=Greeting, registry=registry)
+    def handle(resource: Greeting):
+        calls.append(resource.spec.greeting)
+        return {"ok": True}
+
+    name = "_watching" if category == "event" else "_indexing"
+    handler = list(getattr(registry, name).get_all_handlers())[0]
+    assert asyncio.run(invoke(handler.fn, kwargs={"body": {**BODY, "spec": {}}})) is None
+    assert asyncio.run(invoke(handler.fn, kwargs={"body": BODY})) == {"ok": True}
+    assert calls == ["hi"]
+
+
+@pytest.mark.parametrize("category", ["validate", "mutate"])
+def test_admission_invalid_rejected(category: str):
+    """Invalid submitted admission input receives an immediate response."""
+    registry = kopf.OperatorRegistry()
+
+    @getattr(tk.on, category)(model=Greeting, registry=registry)
+    def admission(resource: Greeting):
+        return None
+
+    handler = list(registry._webhooks.get_all_handlers())[0]
+    with pytest.raises(kopf.AdmissionError) as error:
+        asyncio.run(invoke(handler.fn, kwargs={"new": {**BODY, "spec": {}}}))
+    assert error.value.code == 422
+
+
+def test_kopf_public_api_inventory_is_reexported():
+    """Keep Kopf's declared public exports available through the facade."""
+    assert set(kopf.__all__) <= set(dir(tk))
+    assert tk.upstream is kopf
+    assert tk.Patch is kopf.Patch
+
+
+def test_stale_status_does_not_block_current_spec():
+    """A defaulted status field tolerates stale observed status."""
+    from based_operators.validation import validate_resource
+
+    class WithStatus(Greeting):
+        status: Spec | None = None
+
+    valid = validate_resource(WithStatus, {**BODY, "status": {"greeting": "observed"}})
+    assert valid.status.greeting == "observed"
+    stale = validate_resource(WithStatus, {**BODY, "status": {"invalid": True}})
+    assert stale.status is None

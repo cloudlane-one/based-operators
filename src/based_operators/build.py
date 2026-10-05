@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import os
 import re
@@ -11,15 +12,18 @@ import sys
 import tempfile
 import tomllib
 import types
+from collections.abc import Mapping
 from contextlib import contextmanager
+from enum import Enum
 from pathlib import Path
-from typing import Annotated, Union, get_args, get_origin
+from typing import Annotated, Literal, Union, get_args, get_origin
 from unittest.mock import patch
 
 from kdantic.cli import _make_version_block, build_crd_object
 from kdantic.helpers.schema import build_k8s_model_schema
 from kdantic.helpers.settings import Settings
 from pydantic import BaseModel
+from pydantic_core import PydanticUndefined
 
 from based_operators.metadata import resolve_metadata
 
@@ -42,29 +46,64 @@ def _model_type(annotation: object, name: str) -> type[BaseModel]:
     return annotation
 
 
-def _check_unions(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
-    """Reject unions that kdantic would silently reduce to their first member."""
+def _check_container(
+    origin: object, args: tuple[object, ...], name: str, seen: set[type[BaseModel]]
+) -> None:
+    """Validate kdantic's supported array and string-key map containers."""
+    if origin is list:
+        if len(args) != 1:
+            raise BuildError(f"{name}: lists must specify an item type")
+        _check_type(args[0], name, seen)
+    else:
+        if len(args) != 2 or args[0] is not str:
+            raise BuildError(f"{name}: maps require string keys and an explicit value type")
+        _check_type(args[1], name, seen)
+
+
+def _check_type(annotation: object, name: str, seen: set[type[BaseModel]]) -> None:
+    """Reject annotations kdantic would coerce to string or silently discard."""
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if origin is Annotated:
+        _check_type(args[0], name, seen)
+    elif origin in (Union, types.UnionType):
+        members = [arg for arg in args if arg is not type(None)]
+        if len(members) != 1:
+            raise BuildError(f"{name}: unsupported union {annotation}")
+        _check_type(members[0], name, seen)
+    elif origin is Literal:
+        if not args or not all(isinstance(arg, str) for arg in args):
+            raise BuildError(f"{name}: only string Literal values are supported")
+    elif origin in (list, dict, Mapping):
+        _check_container(origin, args, name, seen)
+    elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        _check_schema(annotation, seen)
+    elif isinstance(annotation, type) and issubclass(annotation, Enum):
+        values = [item.value for item in annotation]
+        if (
+            not values
+            or type(values[0]) not in (str, int, float, bool)
+            or any(type(value) is not type(values[0]) for value in values)
+        ):
+            raise BuildError(f"{name}: enum values must have one supported primitive type")
+    elif annotation not in (str, int, float, bool):
+        raise BuildError(f"{name}: unsupported schema type {annotation}")
+
+
+def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
+    """Check every nested field and explicitly serialized default before generation."""
     if model in seen:
         return
     seen.add(model)
     for name, field in model.model_fields.items():
-
-        def walk(annotation: object) -> None:
-            origin = get_origin(annotation)
-            if origin in (Union, types.UnionType):
-                members = [arg for arg in get_args(annotation) if arg is not type(None)]
-                if len(members) != 1:
-                    raise BuildError(f"{model.__name__}.{name}: unsupported union {annotation}")
-                walk(members[0])
-            elif origin is Annotated:
-                walk(get_args(annotation)[0])
-            elif origin is not None:
-                for arg in get_args(annotation):
-                    walk(arg)
-            elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
-                _check_unions(annotation, seen)
-
-        walk(field.annotation)
+        full_name = f"{model.__name__}.{name}"
+        _check_type(field.annotation, full_name, seen)
+        default = field.get_default()
+        if default is not PydanticUndefined and default is not None:
+            try:
+                json.dumps(default, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise BuildError(f"{full_name}: default is not JSON serializable") from exc
 
 
 def _load_model(reference: str, root: Path) -> type[BaseModel]:
@@ -86,7 +125,8 @@ def _load_model(reference: str, root: Path) -> type[BaseModel]:
         del sys.path[:2]
     if not isinstance(model, type) or not issubclass(model, BaseModel):
         raise BuildError(f"{reference}: expected a Pydantic BaseModel subclass")
-    if not Path(module.__file__).resolve().is_relative_to(root):
+    location = getattr(module, "__file__", None)
+    if location is None or not Path(location).resolve().is_relative_to(root):
         raise BuildError(f"{reference}: module resolves outside the project")
     return model
 
@@ -133,33 +173,63 @@ def _kdantic_defaults():
 
 
 def _dockerfile(handler: str) -> str:
-    """Render a production-only uv image running one standalone Kopf process."""
+    """Render an image with an isolated build stage and a non-root runtime."""
+    launcher = (
+        "import os; os.execvp('kopf', "
+        "['kopf', 'run', '--standalone', '--namespace', "
+        f"os.environ['POD_NAMESPACE'], {handler!r}])"
+    )
     return (
-        "FROM python:3.13-slim\n"
+        "FROM python:3.13-slim AS build\n"
         "COPY --from=ghcr.io/astral-sh/uv:0.9.0 /uv /usr/local/bin/uv\n"
         "WORKDIR /operator\n"
         "COPY pyproject.toml uv.lock README.md ./\n"
         "COPY src/ ./src/\n"
         "COPY app/ ./app/\n"
-        "RUN uv sync --frozen --no-dev --no-install-project\n"
+        "RUN uv sync --frozen --no-dev\n"
+        "FROM python:3.13-slim\n"
+        "RUN groupadd --gid 10001 operator && \\\n"
+        "    useradd --uid 10001 --gid operator --create-home operator\n"
+        "WORKDIR /operator\n"
+        "COPY --from=build --chown=operator:operator /operator/.venv/ ./.venv/\n"
+        "COPY --from=build --chown=operator:operator /operator/src/ ./src/\n"
+        "COPY --from=build --chown=operator:operator /operator/app/ ./app/\n"
         'ENV PATH="/operator/.venv/bin:$PATH" PYTHONPATH="/operator/src"\n'
-        f"CMD {json.dumps(['kopf', 'run', '--standalone', '--namespace', 'default', handler])}\n"
+        "USER operator\n"
+        f"CMD {json.dumps(['python', '-c', launcher])}\n"
     )
 
 
-def _chart(image: str, handler: str, resources: list[tuple[str, str]]) -> dict[str, str]:
+def _chart(image: str, resources: list[tuple[str, str]]) -> dict[str, str]:
     """Render namespace-scoped RBAC and a deliberately single-replica chart."""
     names = sorted({plural for _, plural in resources})
     groups = sorted({group for group, _ in resources})
     resource_list = json.dumps(names)
     group_list = json.dumps(groups)
-    command = json.dumps(
-        ["kopf", "run", "--standalone", "--namespace", "$(POD_NAMESPACE)", handler]
-    )
     release = "{{ .Release.Name }}"
     return {
         "Chart.yaml": "apiVersion: v2\nname: based-operator\nversion: 0.1.0\ntype: application\n",
         "values.yaml": f"image: {json.dumps(image)}\n",
+        "values.schema.json": json.dumps(
+            {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["image"],
+                "properties": {"image": {"type": "string", "minLength": 1}},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        "README.md": (
+            "# Standalone operator chart\n\n"
+            "Install with `helm install RELEASE ./helm --namespace NAMESPACE` after "
+            "building and pushing the image in `values.yaml`. Set `image` with "
+            "`--set image=REGISTRY/NAME:TAG` if needed. One replica watches only "
+            "the release namespace; it does not provide HA. CRDs in `crds/` "
+            "are installed on first install but Helm does not upgrade or remove them.\n"
+        ),
         "templates/operator.yaml": f"""apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -214,7 +284,6 @@ spec:
         - name: operator
           image: {{{{ .Values.image | quote }}}}
           imagePullPolicy: IfNotPresent
-          command: {command}
           env:
             - name: POD_NAMESPACE
               valueFrom:
@@ -240,9 +309,9 @@ def _generate_crds(
             status = model.model_fields.get("status")
             status_type = _model_type(status.annotation, f"{reference}.status") if status else None
             seen: set[type[BaseModel]] = set()
-            _check_unions(spec_type, seen)
+            _check_schema(spec_type, seen)
             if status_type:
-                _check_unions(status_type, seen)
+                _check_schema(status_type, seen)
             meta = resolve_metadata(model)
             if meta.scope != "Namespaced":
                 raise BuildError(f"{reference}: only Namespaced resources are supported")
@@ -292,10 +361,29 @@ def build(
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(crds[key], indent=2, sort_keys=True) + "\n")
         (stage / "Dockerfile").write_text(_dockerfile(handler))
-        for name, text in _chart(image, handler, resources).items():
+        for name, text in _chart(image, resources).items():
             path = stage / "helm" / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
+        checksums = {
+            path.relative_to(stage).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(stage.rglob("*"))
+            if path.is_file()
+        }
+        (stage / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "image": image,
+                    "handler": handler,
+                    "models": references,
+                    "sha256": checksums,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
         if output.exists():
             raise BuildError(f"Output already exists: {output}")
         os.rename(stage, output)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -57,8 +58,23 @@ def test_build_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     )
     assert crd["spec"]["scope"] == "Namespaced"
     assert "replicas: 1" in (output / "helm/templates/operator.yaml").read_text()
-    assert "--standalone" in (output / "Dockerfile").read_text()
+    dockerfile = (output / "Dockerfile").read_text()
+    assert "FROM python:3.13-slim AS build" in dockerfile
+    assert "USER operator" in dockerfile
+    assert "--no-install-project" not in dockerfile
+    assert "default" not in dockerfile
+    cmd = json.loads(dockerfile.split("CMD ", 1)[1])
+    assert cmd[:2] == ["python", "-c"]
+    assert "os.execvp" in cmd[2] and "POD_NAMESPACE" in cmd[2]
     assert '"example/operator:1"' in (output / "helm/values.yaml").read_text()
+    schema = json.loads((output / "helm/values.schema.json").read_text())
+    assert schema["required"] == ["image"]
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert manifest["models"] == ["sample:Widget"]
+    for path, checksum in manifest["sha256"].items():
+        assert hashlib.sha256((output / path).read_bytes()).hexdigest() == checksum
+    other = build(root, root / "dist/other", image="example/operator:1")
+    assert (output / "manifest.json").read_bytes() == (other / "manifest.json").read_bytes()
     if shutil.which("helm"):
         rendered = subprocess.run(
             ["helm", "template", "sample", str(output / "helm"), "--namespace", "demo"],
@@ -148,3 +164,40 @@ def test_handler_path_is_confined(tmp_path: Path) -> None:
     with pytest.raises(BuildError, match="app/"):
         build(root, root / "out", image="x")
     assert not (root / "out").exists()
+
+
+@pytest.mark.parametrize(
+    ("fields", "error"),
+    [
+        ("value: bytes", "unsupported schema type"),
+        ("value: dict[int, str]", "string keys"),
+        ("value: dict", "unsupported schema type"),
+        ("value: list", "unsupported schema type"),
+        ("value: object", "unsupported schema type"),
+        ("value: int\n    fallback: object = object()", "unsupported schema type"),
+    ],
+)
+def test_reject_lossy_schemas(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fields: str, error: str
+) -> None:
+    """Unsupported leaves and non-string maps must not silently become strings."""
+    root = project(tmp_path, fields=fields)
+    monkeypatch.syspath_prepend(str(root))
+    with pytest.raises(BuildError, match=error):
+        build(root, root / "out", image="x")
+    assert not (root / "out").exists()
+
+
+def test_required_and_default_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Check that kdantic emits required, default and nullable properties accurately."""
+    root = project(
+        tmp_path,
+        fields="value: int\n    label: str = 'ready'\n    optional: int | None = None",
+    )
+    monkeypatch.syspath_prepend(str(root))
+    output = build(root, root / "out", image="x")
+    crd = json.loads((output / "helm/crds/widgets.widgets.example.com.yaml").read_text())
+    spec = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]
+    assert spec["required"] == ["value"]
+    assert spec["properties"]["label"]["default"] == "ready"
+    assert spec["properties"]["optional"]["nullable"] is True
