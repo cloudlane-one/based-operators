@@ -175,7 +175,7 @@ def _read_config(root: Path) -> tuple[list[str], str]:
 @contextmanager
 def _kdantic_defaults():
     """Keep kdantic's lazy CLI settings from parsing this application's arguments."""
-    settings = Settings.model_construct()
+    settings = Settings.model_construct(crd_identity_fields=set())
     with patch("kdantic.helpers.settings.load_settings", return_value=settings):
         yield
 
