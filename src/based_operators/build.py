@@ -111,6 +111,28 @@ def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
     try:
         for name, field in model.model_fields.items():
             full_name = f"{model.__name__}.{name}"
+            serialized_name = field.serialization_alias or field.alias or name
+            input_alias = field.validation_alias or field.alias
+            accepts_serialized_name = (
+                (serialized_name == name and input_alias is None)
+                or (
+                    model.model_config.get("validate_by_alias", True)
+                    and (
+                        input_alias == serialized_name
+                        or serialized_name in getattr(input_alias, "choices", ())
+                    )
+                )
+                or (
+                    serialized_name == name
+                    and model.model_config.get(
+                        "validate_by_name", model.model_config.get("populate_by_name", False)
+                    )
+                )
+            )
+            if not accepts_serialized_name:
+                raise BuildError(
+                    f"{full_name}: incompatible input/output aliases for {serialized_name!r}"
+                )
             _check_type(field.annotation, full_name, seen)
             default = field.get_default()
             if not field.is_required() and default is not None:
@@ -152,7 +174,9 @@ def _normalize_model_required(model: type[BaseModel], schema: dict) -> None:
     required = []
     for name, field in model.model_fields.items():
         serialized_name = (
-            field.serialization_alias if isinstance(field.serialization_alias, str) else name
+            field.serialization_alias
+            if isinstance(field.serialization_alias, str)
+            else field.alias if isinstance(field.alias, str) else name
         )
         field_schema = properties.get(serialized_name)
         if field_schema is not None:

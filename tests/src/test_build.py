@@ -9,10 +9,11 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
-from pydantic import AliasPath, BaseModel, Field
+from pydantic import AliasPath
 
 from based_operators.build import BuildError, _load_model, _normalize_model_required, build
 from based_operators.cli import main
@@ -313,7 +314,8 @@ def test_required_fields_recurse_with_serialized_names(
         "    defaulted: int = 1\n"
         "class Spec(BaseModel):\n"
         "    direct_value: int | None\n"
-        "    renamed: str | None = Field(serialization_alias='serializedName')\n"
+        "    renamed: str | None = Field(validation_alias='serializedName', "
+        "serialization_alias='serializedName')\n"
         "    child: Child\n"
         "    children: list[Child]\n"
         "class Widget(BaseModel):\n"
@@ -331,12 +333,72 @@ def test_required_fields_recurse_with_serialized_names(
     assert schema["properties"]["children"]["items"]["required"] == ["nested_value"]
 
 
+def test_serialized_alias_round_trips_from_schema_to_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A CRD property emitted under an alias is accepted by typed resource validation."""
+    from based_operators.validation import validate_resource
+
+    root = project(tmp_path)
+    (root / "src" / "sample.py").write_text(
+        "from pydantic import BaseModel, Field\n"
+        "class Spec(BaseModel):\n"
+        "    renamed: str = Field(validation_alias='serializedName', "
+        "serialization_alias='serializedName')\n"
+        "class Widget(BaseModel):\n"
+        "    apiVersion: str = 'widgets.example.com/v1'\n"
+        "    kind: str = 'Widget'\n"
+        "    namespace: str = 'default'\n"
+        "    spec: Spec\n"
+    )
+    monkeypatch.syspath_prepend(str(root))
+    output = build(root, root / "out", image="x")
+    crd = json.loads((output / "helm/crds/widgets.widgets.example.com.yaml").read_text())
+    spec_schema = crd["spec"]["versions"][0]["schema"]["openAPIV3Schema"]["properties"]["spec"]
+    property_name = next(iter(spec_schema["properties"]))
+    resource = validate_resource(
+        _load_model("sample:Widget", root),
+        {
+            "apiVersion": "widgets.example.com/v1",
+            "kind": "Widget",
+            "namespace": "default",
+            "spec": {property_name: "accepted"},
+        },
+    )
+    assert property_name == "serializedName"
+    assert resource.spec.renamed == "accepted"
+
+
 def test_required_fields_fall_back_for_non_string_serialization_alias() -> None:
     """Use the field name when a serialization alias is not a string."""
 
-    class Model(BaseModel):
-        value: int = Field(serialization_alias=AliasPath("value"))
+    class Model:
+        model_fields = {
+            "value": SimpleNamespace(
+                serialization_alias=AliasPath("value"),
+                alias=None,
+                is_required=lambda: True,
+                annotation=int,
+            )
+        }
 
     schema = {"properties": {"value": {"type": "integer"}}}
     _normalize_model_required(Model, schema)
     assert schema["required"] == ["value"]
+
+
+def test_build_rejects_incompatible_serialization_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Do not generate a CRD property that Pydantic handlers cannot validate."""
+    root = project(tmp_path, fields="renamed: str = Field(serialization_alias='serializedName')")
+    sample = root / "src" / "sample.py"
+    sample.write_text(
+        sample.read_text().replace(
+            "from pydantic import BaseModel\n", "from pydantic import BaseModel, Field\n"
+        )
+    )
+    monkeypatch.syspath_prepend(str(root))
+    with pytest.raises(BuildError, match="incompatible input/output aliases"):
+        build(root, root / "out", image="x")
+    assert not (root / "out").exists()
