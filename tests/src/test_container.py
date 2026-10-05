@@ -63,7 +63,7 @@ def test_generated_container_starts_with_downstream_handlers(tmp_path: Path) -> 
             ],
             cwd=project, check=True, timeout=600,
         )
-        result = subprocess.run(
+        subprocess.run(
             [
                 "docker", "run", "--rm", "--network", "none", "--entrypoint", "python", image,
                 "-c", (
@@ -76,7 +76,6 @@ def test_generated_container_starts_with_downstream_handlers(tmp_path: Path) -> 
             ],
             cwd=project, check=True, capture_output=True, text=True, timeout=60,
         )
-        assert result.returncode == 0
     finally:
         subprocess.run(
             ["docker", "image", "rm", "--force", image], capture_output=True, check=False
