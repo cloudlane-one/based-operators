@@ -1,5 +1,6 @@
 """Explicit fresh-model access for Kopf daemon handlers."""
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any
 
@@ -36,5 +37,8 @@ class ResourceContext:
             try:
                 return self.refresh()
             except InvalidDesiredInputError:
-                await self.stopped.wait(delay)
+                try:
+                    await asyncio.wait_for(self.stopped.wait(), timeout=delay)
+                except TimeoutError:
+                    pass
         return None

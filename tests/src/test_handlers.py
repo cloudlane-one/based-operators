@@ -191,6 +191,27 @@ def test_daemon_waits_for_corrected_live_body():
     assert stopped.waits == 1
 
 
+def test_async_daemon_waits_for_corrected_live_body():
+    """An async stop flag with a no-argument wait permits retries after a timeout."""
+    registry = kopf.OperatorRegistry()
+    body = {**BODY, "spec": {}}
+
+    class Stopped(asyncio.Event):
+        def __bool__(self):
+            return self.is_set()
+
+        async def wait(self):
+            body["spec"] = {"greeting": "fixed"}
+            await super().wait()
+
+    @tk.on.daemon(model=Greeting, registry=registry, retry_delay=0.001)
+    async def daemon(resource: Greeting):
+        return resource.spec.greeting
+
+    handler = list(registry._spawning.get_all_handlers())[0]
+    assert asyncio.run(invoke(handler.fn, kwargs={"body": body, "stopped": Stopped()})) == "fixed"
+
+
 def test_field_scoped_old_new_stay_raw():
     """Field selection old/new retain Kopf's original scalar values."""
     registry = kopf.OperatorRegistry()
