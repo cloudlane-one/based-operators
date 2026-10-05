@@ -8,7 +8,7 @@ from typing import Literal, cast
 import kopf
 import pytest
 from kopf._core.actions.invocation import invoke
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 import based_operators as tk
 import based_operators.handlers as handler_module
@@ -287,3 +287,42 @@ def test_stale_status_does_not_block_current_spec():
     assert cast(WithStatus, valid).status == Spec(greeting="observed")
     stale = validate_resource(WithStatus, {**BODY, "status": {"invalid": True}})
     assert cast(WithStatus, stale).status is None
+
+
+def test_spec_defaults_and_explicit_null_are_distinguished():
+    """An omitted spec uses its model default, but explicit null is invalid."""
+    from based_operators.validation import InvalidDesiredInputError, validate_resource
+
+    class DefaultedSpec(Greeting):
+        spec: Spec = Field(default_factory=lambda: Spec(greeting="default"))
+
+    body_without_spec = {key: value for key, value in BODY.items() if key != "spec"}
+    valid = validate_resource(DefaultedSpec, body_without_spec)
+    assert cast(DefaultedSpec, valid).spec == Spec(greeting="default")
+
+    with pytest.raises(InvalidDesiredInputError):
+        validate_resource(DefaultedSpec, {**BODY, "spec": None})
+
+
+def test_spec_field_validator_is_classified_as_invalid_desired_input():
+    """Resource-level spec validators use the same invalid-input policy."""
+    from based_operators.validation import InvalidDesiredInputError, validate_resource
+
+    class ValidatedSpec(Greeting):
+        @field_validator("spec")
+        @classmethod
+        def reject_spec(cls, spec: Spec) -> Spec:
+            if spec.greeting == "reject":
+                raise ValueError("spec rejected")
+            return spec
+
+    with pytest.raises(InvalidDesiredInputError):
+        validate_resource(ValidatedSpec, {**BODY, "spec": {"greeting": "reject"}})
+
+
+def test_unrelated_envelope_errors_are_not_classified_as_invalid_spec():
+    """Unrelated model errors propagate even when the spec is also invalid."""
+    from based_operators.validation import validate_resource
+
+    with pytest.raises(ValidationError):
+        validate_resource(Greeting, {**BODY, "metadata": "wrong", "spec": {}})

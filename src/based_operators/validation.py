@@ -3,7 +3,7 @@
 from typing import Any, TypeVar
 
 import kopf
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -21,24 +21,39 @@ class InvalidDesiredInputError(Exception):
 
 def validate_resource(model: type[T], body: dict[str, Any]) -> T:
     """Validate desired spec separately from stale status; return a detached snapshot."""
-    spec_field = model.model_fields["spec"]
     try:
-        TypeAdapter(spec_field.annotation).validate_python(body.get("spec"))
+        return model.model_validate(dict(body))
     except ValidationError as error:
-        raise InvalidDesiredInputError(error.errors(include_input=False)) from error
-    snapshot = dict(body)
-    try:
-        return model.model_validate(snapshot)
-    except ValidationError as error:
-        errs = error.errors()
-        if not errs or any(
-            not (loc := details.get("loc")) or loc[0] != "status" for details in errs
+        errors = error.errors(include_input=False)
+        if errors and all(
+            (loc := details.get("loc")) and loc[0] == "status" for details in errors
         ):
-            raise
-        # Status is observed, not desired. If stale status is invalid, still
-        # reconcile the current spec when the status field has a safe default.
-        snapshot.pop("status", None)
-        return model.model_validate(snapshot)
+            # Status is observed, not desired. If stale status is invalid, still
+            # reconcile the current spec when the status field has a safe default.
+            snapshot = dict(body)
+            snapshot.pop("status", None)
+            try:
+                return model.model_validate(snapshot)
+            except ValidationError as fallback_error:
+                _raise_if_invalid_spec(fallback_error)
+                raise
+        _raise_if_invalid_spec(error)
+        raise
+
+
+def _raise_if_invalid_spec(error: ValidationError) -> None:
+    errors = error.errors(include_input=False)
+    spec_errors = [
+        details for details in errors
+        if (loc := details.get("loc")) and loc[0] == "spec"
+    ]
+    unrelated_errors = [
+        details for details in errors
+        if not (loc := details.get("loc"))
+        or loc[0] not in {"spec", "status"}
+    ]
+    if spec_errors and not unrelated_errors:
+        raise InvalidDesiredInputError(spec_errors) from error
 
 
 def respond_invalid(category: str, error: InvalidDesiredInputError, delay: float) -> None:
