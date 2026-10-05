@@ -16,11 +16,6 @@ from based_operators.validation import InvalidDesiredInputError, respond_invalid
 
 log = logging.getLogger(__name__)
 
-_RESOURCE_FAMILIES = (
-    "create", "resume", "update", "delete", "field", "timer",
-    "daemon", "event", "index", "validate", "mutate",
-)
-
 
 def _optional_resource(annotation: Any, model: type[BaseModel]) -> bool:
     return annotation is not inspect.Parameter.empty and (
