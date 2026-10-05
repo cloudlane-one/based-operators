@@ -21,8 +21,17 @@ def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
     """Validate desired spec separately from stale status; return a detached snapshot."""
     from copy import deepcopy
 
+    snapshot = deepcopy(dict(body))
+    metadata = snapshot.get("metadata")
+    if (
+        "namespace" in model.model_fields
+        and "namespace" not in snapshot
+        and isinstance(metadata, dict)
+        and "namespace" in metadata
+    ):
+        snapshot["namespace"] = metadata["namespace"]
     try:
-        return model.model_validate(deepcopy(dict(body)))
+        return model.model_validate(snapshot)
     except ValidationError as error:
         errors = error.errors(include_input=False)
         if errors and all(
@@ -30,7 +39,6 @@ def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
         ):
             # Status is observed, not desired. If stale status is invalid, still
             # reconcile the current spec when the status field has a safe default.
-            snapshot = deepcopy(dict(body))
             snapshot.pop("status", None)
             try:
                 return model.model_validate(snapshot)

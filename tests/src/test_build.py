@@ -209,6 +209,26 @@ def test_build_isolates_consecutive_project_imports(tmp_path: Path) -> None:
             sys.modules.pop(name, None)
 
 
+def test_build_preserves_project_environment_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cache cleanup must not evict dependencies installed under the project root."""
+    root = project(tmp_path)
+    dependency_path = root / ".venv/lib/python/site-packages"
+    dependency_path.mkdir(parents=True)
+    (dependency_path / "project_dependency.py").write_text("VALUE = 1\n")
+    sample = root / "src" / "sample.py"
+    sample.write_text("from project_dependency import VALUE\n" + sample.read_text())
+    monkeypatch.syspath_prepend(str(dependency_path))
+
+    build(root, root / "first", image="x")
+    dependency = sys.modules["project_dependency"]
+    build(root, root / "second", image="x")
+
+    assert sys.modules["project_dependency"] is dependency
+
+
 def test_build_preserves_non_filesystem_modules(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -559,6 +579,31 @@ def test_serialized_alias_round_trips_from_schema_to_handler(
     )
     assert property_name == "serializedName"
     assert getattr(getattr(resource, "spec"), "renamed") == "accepted"
+
+
+def test_required_namespace_round_trips_from_kubernetes_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A required model namespace is populated from the Kubernetes envelope."""
+    from based_operators.validation import validate_resource
+
+    root = project(tmp_path)
+    sample = root / "src" / "sample.py"
+    sample.write_text(sample.read_text().replace("namespace: str = 'default'", "namespace: str"))
+    monkeypatch.syspath_prepend(str(root))
+    build(root, root / "out", image="x")
+
+    resource = validate_resource(
+        _load_model("sample:Widget", root),
+        {
+            "apiVersion": "widgets.example.com/v1",
+            "kind": "Widget",
+            "metadata": {"namespace": "operator-system"},
+            "spec": {"value": 1},
+        },
+    )
+
+    assert getattr(resource, "namespace") == "operator-system"
 
 
 def test_required_fields_fall_back_for_non_string_serialization_alias() -> None:

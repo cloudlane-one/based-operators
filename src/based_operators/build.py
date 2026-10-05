@@ -240,7 +240,7 @@ def _load_model(reference: str, root: Path) -> type[BaseModel]:
         raise BuildError(f"Invalid model reference {reference!r}; expected module:Class")
     with _MODEL_IMPORT_LOCK:
         original_sys_path = sys.path.copy()
-        project_roots = {root.resolve(), (root / "src").resolve()}
+        project_roots = {(root / "src").resolve()}
         _MODEL_IMPORT_ROOTS.update(project_roots)
         isolated_roots = _MODEL_IMPORT_ROOTS.copy()
         _remove_project_modules(isolated_roots)
