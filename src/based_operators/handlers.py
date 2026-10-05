@@ -4,13 +4,15 @@ import functools
 import inspect
 import logging
 import types
-from typing import Any, Callable, Union, get_args, get_origin
+from collections.abc import Callable
+from typing import Any, Union, get_args, get_origin, get_type_hints
 
 import kopf
 from pydantic import BaseModel
 
+from based_operators.daemon import ResourceContext
 from based_operators.metadata import resolve_metadata
-from based_operators.validation import InvalidDesiredInput, respond_invalid, validate_resource
+from based_operators.validation import InvalidDesiredInputError, respond_invalid, validate_resource
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ def _prepare(
         return _filter(fn, kwargs)
     try:
         resource = validate_resource(model, body)
-    except InvalidDesiredInput as error:
+    except InvalidDesiredInputError as error:
         if category == "delete":
             resource = None
         else:
@@ -71,6 +73,84 @@ def _filter(fn: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in kwargs.items() if name in signature.parameters}
 
 
+def _model_options(
+    model: type[BaseModel], args: tuple[Any, ...], options: dict[str, Any],
+) -> dict[str, Any]:
+    meta = resolve_metadata(model)
+    if args:
+        raise ValueError("model= cannot be combined with positional resource selectors")
+    for key, inferred in (
+        ("group", meta.group), ("version", meta.version),
+        ("kind", meta.names.kind), ("plural", meta.names.plural),
+    ):
+        if key in options and options[key] != inferred:
+            raise ValueError(f"{key} conflicts with model identity: {inferred}")
+    return {**options, "group": meta.group, "version": meta.version, "kind": meta.names.kind}
+
+
+def _register_function(
+    fn: Callable[..., Any],
+    decorator: Callable[..., Any],
+    model: type[BaseModel],
+    category: str,
+    retry_delay: float,
+    strict_delete: bool,
+) -> Callable[..., Any]:
+    _verify_delete(fn, model, category, strict_delete)
+    effective_category = "update" if category == "delete" and strict_delete else category
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def async_wrapper(**kwargs: Any) -> Any:
+            if category == "daemon":
+                context = ResourceContext(model, kwargs["body"], kwargs["stopped"])
+                resource = await context.wait_async(retry_delay)
+                if resource is None:
+                    return None
+                return await fn(**_filter(fn, {
+                    **kwargs, "resource": resource, "resource_context": context,
+                }))
+            prepared = _prepare(fn, kwargs, model, effective_category, retry_delay)
+            if prepared is not None:
+                return await fn(**prepared)
+            return None
+
+        decorator(async_wrapper)
+    else:
+        @functools.wraps(fn)
+        def sync_wrapper(**kwargs: Any) -> Any:
+            if category == "daemon":
+                context = ResourceContext(model, kwargs["body"], kwargs["stopped"])
+                resource = context.wait(retry_delay)
+                if resource is None:
+                    return None
+                return fn(**_filter(fn, {
+                    **kwargs, "resource": resource, "resource_context": context,
+                }))
+            prepared = _prepare(fn, kwargs, model, effective_category, retry_delay)
+            if prepared is not None:
+                return fn(**prepared)
+            return None
+
+        decorator(sync_wrapper)
+    return fn
+
+
+def _verify_delete(
+    fn: Callable[..., Any], model: type[BaseModel], category: str, strict_delete: bool,
+) -> None:
+    if category != "delete" or strict_delete or "resource" not in inspect.signature(fn).parameters:
+        return
+    try:
+        annotation = get_type_hints(fn).get("resource")
+    except (NameError, TypeError) as error:
+        raise TypeError("delete fallback needs a resolvable resource annotation") from error
+    if not _optional_resource(annotation, model):
+        raise TypeError(
+            "delete fallback requires resource annotated Model | None; "
+            "use strict_delete=True to require a validated snapshot"
+        )
+
+
 def _registration(category: str) -> Callable[..., Any]:
     upstream = getattr(kopf.on, category) if hasattr(kopf.on, category) else getattr(kopf, category)
 
@@ -88,50 +168,10 @@ def _registration(category: str) -> Callable[..., Any]:
             return upstream(*args, **options)
         if retry_delay <= 0:
             raise ValueError("retry_delay must be positive")
-        meta = resolve_metadata(model)
-        if args:
-            raise ValueError("model= cannot be combined with positional resource selectors")
-        for key, inferred in (
-            ("group", meta.group), ("version", meta.version),
-            ("kind", meta.names.kind), ("plural", meta.names.plural),
-        ):
-            if key in options and options[key] != inferred:
-                raise ValueError(f"{key} conflicts with model identity: {inferred}")
-        options.update(group=meta.group, version=meta.version, kind=meta.names.kind)
-        decorator = upstream(**options)
+        decorator = upstream(**_model_options(model, args, options))
 
         def attach(fn: Callable[..., Any]) -> Callable[..., Any]:
-            signature = inspect.signature(fn)
-            if category == "delete" and not strict_delete and "resource" in signature.parameters:
-                if not _optional_resource(signature.parameters["resource"].annotation, model):
-                    raise TypeError(
-                        "delete fallback requires resource annotated Model | None; "
-                        "use strict_delete=True to require a validated snapshot"
-                    )
-            if category == "delete" and strict_delete:
-                effective_category = "update"
-            else:
-                effective_category = category
-
-            if inspect.iscoroutinefunction(fn):
-                @functools.wraps(fn)
-                async def async_wrapper(**kwargs: Any) -> Any:
-                    prepared = _prepare(fn, kwargs, model, effective_category, retry_delay)
-                    if prepared is not None:
-                        return await fn(**prepared)
-                    return None
-
-                decorator(async_wrapper)
-            else:
-                @functools.wraps(fn)
-                def sync_wrapper(**kwargs: Any) -> Any:
-                    prepared = _prepare(fn, kwargs, model, effective_category, retry_delay)
-                    if prepared is not None:
-                        return fn(**prepared)
-                    return None
-
-                decorator(sync_wrapper)
-            return fn
+            return _register_function(fn, decorator, model, category, retry_delay, strict_delete)
 
         return attach
 

@@ -17,6 +17,8 @@ nav:
       - how-to-check-quality.md
   - Reference:
       - Python API: ref-python-api.md
+      - Operator API: operator-api.md
+      - Build artifacts: build.md
       - ref-directory-structure.md
       - ref-code-conventions-tooling.md
 

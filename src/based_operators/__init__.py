@@ -4,8 +4,9 @@ import kopf as upstream
 from kopf import *  # noqa: F403
 
 from based_operators.handlers import on
+from based_operators.daemon import ResourceContext
 from based_operators.status import patch_status
 
 __all__ = [name for name in dir(upstream) if not name.startswith("_")] + [
-    "on", "upstream", "patch_status",
+    "on", "upstream", "patch_status", "ResourceContext",
 ]
