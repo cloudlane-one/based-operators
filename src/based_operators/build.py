@@ -144,8 +144,8 @@ def _load_model(reference: str, root: Path) -> type[BaseModel]:
     if not isinstance(model, type) or not issubclass(model, BaseModel):
         raise BuildError(f"{reference}: expected a Pydantic BaseModel subclass")
     location = getattr(module, "__file__", None)
-    if location is None or not Path(location).resolve().is_relative_to(root):
-        raise BuildError(f"{reference}: module resolves outside the project")
+    if location is None or not Path(location).resolve().is_relative_to(root / "src"):
+        raise BuildError(f"{reference}: model modules must resolve under the project's src/")
     return model
 
 

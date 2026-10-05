@@ -8,7 +8,7 @@ models = ["my_operator.models:Widget", "my_operator.models:Gadget"]
 handler = "app/operator.py"
 ```
 
-The handler must exist under `app/`. Model imports resolve from the project or its `src/` directory. Each model must be a Pydantic model with a `spec` model field and optionally a `status` model field. Set `apiVersion` to your API group/version and `kind` to your resource kind; kdantic resolves the remaining CRD metadata. Model imports run Python code, so only build trusted projects.
+The handler must exist under `app/`. Model imports resolve from the project's `src/` directory; project-root model modules are rejected because they are not included in the generated container. Each model must be a Pydantic model with a `spec` model field and optionally a `status` model field. Set `apiVersion` to your API group/version and `kind` to your resource kind; kdantic resolves the remaining CRD metadata. Model imports run Python code, so only build trusted projects.
 
 ```sh
 python -m based_operators.cli build --project-root . --output dist/operator --image registry.example.com/operator:1

@@ -25,7 +25,7 @@ def project(tmp_path: Path, *, models: str = '"sample:Widget"', fields: str = "v
     (tmp_path / "app" / "operator.py").write_text("import kopf\n")
     (tmp_path / "README.md").write_text("Test project\n")
     (tmp_path / "uv.lock").write_text("version = 1\n")
-    (tmp_path / "sample.py").write_text(
+    (tmp_path / "src" / "sample.py").write_text(
         "from pydantic import BaseModel\n"
         "class Spec(BaseModel):\n"
         f"    {fields}\n"
@@ -98,13 +98,25 @@ def test_model_import_restores_sys_path(tmp_path: Path, monkeypatch: pytest.Monk
     """A model module cannot leave process-wide import path changes behind."""
     root = project(tmp_path)
     monkeypatch.syspath_prepend(str(root))
-    sample = root / "sample.py"
+    sample = root / "src" / "sample.py"
     sample.write_text("import sys\nsys.path.insert(0, 'unexpected-path')\n" + sample.read_text())
     original_sys_path = sys.path.copy()
 
     _load_model("sample:Widget", root)
 
     assert sys.path == original_sys_path
+
+
+def test_project_root_model_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Root-level model modules cannot be imported by the generated container."""
+    root = project(tmp_path)
+    (root / "src" / "sample.py").replace(root / "sample.py")
+    monkeypatch.syspath_prepend(str(root))
+
+    with pytest.raises(BuildError, match="under the project's src/"):
+        build(root, root / "out", image="x")
+
+    assert not (root / "out").exists()
 
 
 def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,7 +231,7 @@ def test_cluster_scope_and_nested_union(tmp_path: Path, monkeypatch: pytest.Monk
     """Avoid generating namespace-limited RBAC or kdantic's lossy union schema."""
     root = project(tmp_path)
     monkeypatch.syspath_prepend(str(root))
-    sample = root / "sample.py"
+    sample = root / "src" / "sample.py"
     sample.write_text(sample.read_text().replace("    namespace: str = 'default'\n", ""))
     with pytest.raises(BuildError, match="Namespaced"):
         build(root, root / "out", image="x")
