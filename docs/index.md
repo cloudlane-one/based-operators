@@ -2,10 +2,8 @@
 hide:
 - navigation
 ---
-# Based PyProject Docs
+# Based Operators Docs
 
 Welcome! 👋
 
-This repository is intended as a template for quickly setting up modern Python projects including dependency management, linting, docs generation, continuous integration and AI tooling.
-
-> Please replace this with your own documentation.
+Build Kubernetes operators with Pydantic resource models, Kopf handlers, and kdantic-generated CRDs.

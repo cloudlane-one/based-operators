@@ -1,6 +1,6 @@
-"""Test the `based_pyproject` module directly."""
+"""Test the `based_operators` module directly."""
 
-from based_pyproject.hello_world import Greeter
+from based_operators.hello_world import Greeter
 
 
 def test_greeter_default():
