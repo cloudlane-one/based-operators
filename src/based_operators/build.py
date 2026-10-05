@@ -63,6 +63,17 @@ def _check_container(
         _check_type(args[1], name, seen, allow_none=False)
 
 
+def _check_enum(annotation: type[Enum], name: str) -> None:
+    """Reject enums without homogeneous supported primitive values."""
+    values = [item.value for item in annotation]
+    if (
+        not values
+        or type(values[0]) not in (str, int, float, bool)
+        or any(type(value) is not type(values[0]) for value in values)
+    ):
+        raise BuildError(f"{name}: enum values must have one supported primitive type")
+
+
 def _check_type(
     annotation: object,
     name: str,
@@ -92,13 +103,7 @@ def _check_type(
     elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
         _check_schema(annotation, seen)
     elif isinstance(annotation, type) and issubclass(annotation, Enum):
-        values = [item.value for item in annotation]
-        if (
-            not values
-            or type(values[0]) not in (str, int, float, bool)
-            or any(type(value) is not type(values[0]) for value in values)
-        ):
-            raise BuildError(f"{name}: enum values must have one supported primitive type")
+        _check_enum(annotation, name)
     elif annotation not in (str, int, float, bool):
         raise BuildError(f"{name}: unsupported schema type {annotation}")
 
@@ -543,6 +548,15 @@ spec:
     }
 
 
+def _normalize_nullable(annotation: object, schema: dict) -> dict:
+    """Preserve envelope field nullability, including Annotated optional types."""
+    while get_origin(annotation) is Annotated:
+        annotation = get_args(annotation)[0]
+    if type(None) in get_args(annotation):
+        return {**schema, "nullable": True}
+    return schema
+
+
 def _generate_crds(
     root: Path, references: list[str]
 ) -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
@@ -578,13 +592,9 @@ def _generate_crds(
             for name, field in (("spec", spec), ("status", status)):
                 if field is None:
                     continue
-                annotation = field.annotation
-                while get_origin(annotation) is Annotated:
-                    annotation = get_args(annotation)[0]
-                if type(None) in get_args(annotation):
-                    schema["properties"][name] = {
-                        **schema["properties"][name], "nullable": True,
-                    }
+                schema["properties"][name] = _normalize_nullable(
+                    field.annotation, schema["properties"][name]
+                )
             _normalize_model_required(spec_type, schema["properties"]["spec"])
             if status_type:
                 _normalize_model_required(status_type, schema["properties"]["status"])

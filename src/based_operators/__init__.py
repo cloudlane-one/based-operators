@@ -3,9 +3,9 @@
 import kopf
 from kopf import *  # noqa: F403
 
-from based_operators.handlers import on
-from based_operators.daemon import ResourceContext
-from based_operators.status import patch_status
+from based_operators.handlers import on as on
+from based_operators.daemon import ResourceContext as ResourceContext
+from based_operators.status import patch_status as patch_status
 
 _kopf_exports = list(getattr(kopf, "__all__", ()))
 _extra_exports = ["on", "patch_status", "ResourceContext"]

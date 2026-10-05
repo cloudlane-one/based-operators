@@ -81,7 +81,7 @@ def test_handler_signature_is_cached_at_registration(monkeypatch):
         "inspect",
         SimpleNamespace(signature=lambda _: pytest.fail("signature inspected during invocation")),
     )
-    assert handler.fn(body=BODY, spec=BODY["spec"]) == "hi"
+    assert asyncio.run(invoke(handler.fn, kwargs={"body": BODY, "spec": BODY["spec"]})) == "hi"
 
 
 def test_async_invalid_retries_then_recovers():
@@ -212,7 +212,7 @@ def test_async_daemon_waits_for_corrected_live_body():
 
         async def wait(self):
             body["spec"] = {"greeting": "fixed"}
-            await super().wait()
+            return await super().wait()
 
     @tk.on.daemon(model=Greeting, registry=registry, retry_delay=0.001)
     async def daemon(resource: Greeting):
@@ -274,6 +274,9 @@ def test_kopf_public_api_inventory_is_reexported():
     assert set(kopf.__all__) <= set(dir(tk))
     assert not hasattr(tk, "upstream")
     assert tk.Patch is kopf.Patch
+    for name in ("on", "ResourceContext", "patch_status"):
+        assert name in tk.__all__
+        assert hasattr(tk, name)
 
 
 def test_stale_status_does_not_block_current_spec():

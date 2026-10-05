@@ -1,11 +1,9 @@
 """Centralized input-validation policies for typed Kopf handlers."""
 
-from typing import Any, TypeVar
+from typing import Any
 
 import kopf
 from pydantic import BaseModel, ValidationError
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class InvalidDesiredInputError(Exception):
@@ -19,7 +17,7 @@ class InvalidDesiredInputError(Exception):
         ))
 
 
-def validate_resource(model: type[T], body: dict[str, Any]) -> T:
+def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
     """Validate desired spec separately from stale status; return a detached snapshot."""
     try:
         return model.model_validate(dict(body))

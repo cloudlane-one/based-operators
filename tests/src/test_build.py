@@ -9,13 +9,22 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from enum import Enum
 from types import SimpleNamespace
+from typing import Annotated, cast
 
 import pytest
 import yaml
-from pydantic import AliasPath
+from pydantic import AliasPath, BaseModel
 
-from based_operators.build import BuildError, _load_model, _normalize_model_required, build
+from based_operators.build import (
+    BuildError,
+    _check_type,
+    _load_model,
+    _normalize_model_required,
+    _normalize_nullable,
+    build,
+)
 from based_operators.cli import main
 
 
@@ -366,7 +375,7 @@ def test_serialized_alias_round_trips_from_schema_to_handler(
         },
     )
     assert property_name == "serializedName"
-    assert resource.spec.renamed == "accepted"
+    assert getattr(getattr(resource, "spec"), "renamed") == "accepted"
 
 
 def test_required_fields_fall_back_for_non_string_serialization_alias() -> None:
@@ -383,8 +392,39 @@ def test_required_fields_fall_back_for_non_string_serialization_alias() -> None:
         }
 
     schema = {"properties": {"value": {"type": "integer"}}}
-    _normalize_model_required(Model, schema)
+    _normalize_model_required(cast(type[BaseModel], Model), schema)
     assert schema["required"] == ["value"]
+
+
+@pytest.mark.parametrize(
+    ("values", "supported"),
+    [
+        ({"FIRST": "first", "SECOND": "second"}, True),
+        ({"FIRST": 1, "SECOND": 2}, True),
+        ({"FIRST": 1.0, "SECOND": 2.0}, True),
+        ({"FIRST": True, "SECOND": False}, True),
+        ({}, False),
+        ({"FIRST": b"first"}, False),
+        ({"FIRST": "first", "SECOND": 2}, False),
+    ],
+)
+def test_enum_schema_validation(values: dict, supported: bool) -> None:
+    """Keep enum validation strict after extracting its primitive-type checks."""
+    enum = Enum("Values", values)
+    if supported:
+        _check_type(enum, "Spec.value", set())
+    else:
+        with pytest.raises(BuildError, match="enum values must have one supported primitive type"):
+            _check_type(enum, "Spec.value", set())
+
+
+@pytest.mark.parametrize("annotation", [int, int | None, Annotated[int | None, "metadata"]])
+def test_envelope_nullability(annotation: object) -> None:
+    """Optional envelope types stay nullable without changing the input schema."""
+    schema = {"type": "integer"}
+    expected = {"type": "integer", "nullable": True} if annotation is not int else schema
+    assert _normalize_nullable(annotation, schema) == expected
+    assert schema == {"type": "integer"}
 
 
 def test_build_rejects_incompatible_serialization_alias(
