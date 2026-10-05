@@ -23,7 +23,7 @@ from unittest.mock import patch
 from kdantic.cli import _make_version_block, build_crd_object
 from kdantic.helpers.schema import build_k8s_model_schema
 from kdantic.helpers.settings import Settings
-from pydantic import AliasChoices, AliasPath, BaseModel
+from pydantic import AliasChoices, AliasPath, BaseModel, RootModel
 
 from based_operators.metadata import resolve_metadata
 
@@ -111,6 +111,8 @@ def _check_type(
 
 def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
     """Check every nested field and explicitly serialized default before generation."""
+    if issubclass(model, RootModel):
+        raise BuildError(f"{model.__name__}: RootModel schemas are unsupported")
     if model in seen:
         raise BuildError(f"{model.__name__}: recursive schemas are unsupported")
     seen.add(model)
@@ -446,10 +448,21 @@ def _chart(
     image: str, resources: list[tuple[str, str, str]],
 ) -> dict[str, str]:
     """Render namespace-scoped RBAC and a deliberately single-replica chart."""
-    names = sorted({plural for _, _, plural in resources})
-    groups = sorted({group for group, _, _ in resources})
-    resource_list = json.dumps(names)
-    group_list = json.dumps(groups)
+    grouped = {
+        group: sorted(
+            {plural for resource_group, _, plural in resources if resource_group == group}
+        )
+        for group in sorted({group for group, _, _ in resources})
+    }
+    rbac_rules = "".join(
+        f"  - apiGroups: {json.dumps([group])}\n"
+        f"    resources: {json.dumps(names)}\n"
+        '    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]\n'
+        f"  - apiGroups: {json.dumps([group])}\n"
+        f"    resources: {json.dumps([name + '/status' for name in names])}\n"
+        '    verbs: ["get", "patch", "update"]\n'
+        for group, names in grouped.items()
+    )
     release = "{{ .Release.Name }}"
     admission = _admission_templates(resources)
     return {
@@ -517,12 +530,7 @@ kind: Role
 metadata:
   name: {release}
 rules:
-  - apiGroups: {group_list}
-    resources: {resource_list}
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: {group_list}
-    resources: {json.dumps([name + '/status' for name in names])}
-    verbs: ["get", "patch", "update"]
+{rbac_rules}\
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["create", "patch"]

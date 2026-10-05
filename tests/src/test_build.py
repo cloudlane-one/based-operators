@@ -112,6 +112,37 @@ def test_build_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
         build(root, output, image="example/operator:1")
 
 
+def test_rbac_rules_keep_resources_in_their_api_groups(tmp_path: Path) -> None:
+    """Do not grant permissions for unconfigured group/resource combinations."""
+    root = project(tmp_path, models='"sample:Widget", "sample:Gadget"')
+    sample = root / "src" / "sample.py"
+    sample.write_text(
+        sample.read_text()
+        + "class Gadget(BaseModel):\n"
+        "    apiVersion: str = 'gadgets.example.com/v1'\n"
+        "    kind: str = 'Gadget'\n"
+        "    namespace: str = 'default'\n"
+        "    spec: Spec\n"
+    )
+    output = build(root, root / "out", image="x")
+    template = (output / "helm/templates/operator.yaml").read_text()
+    role = yaml.safe_load("rules:\n" + template.split("rules:\n", 1)[1].split("---", 1)[0])
+    rules = role["rules"]
+    assert len(rules) == 5
+    assert {
+        (tuple(rule["apiGroups"]), tuple(rule["resources"]), tuple(rule["verbs"]))
+        for rule in rules
+    } == {
+        (("widgets.example.com",), ("widgets",),
+         ("get", "list", "watch", "create", "update", "patch", "delete")),
+        (("widgets.example.com",), ("widgets/status",), ("get", "patch", "update")),
+        (("gadgets.example.com",), ("gadgets",),
+         ("get", "list", "watch", "create", "update", "patch", "delete")),
+        (("gadgets.example.com",), ("gadgets/status",), ("get", "patch", "update")),
+        (("",), ("events",), ("create", "patch")),
+    }
+
+
 def test_model_import_restores_sys_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A model module cannot leave process-wide import path changes behind."""
     root = project(tmp_path)
@@ -350,6 +381,37 @@ def test_reject_lossy_schemas(
     root = project(tmp_path, fields=fields)
     monkeypatch.syspath_prepend(str(root))
     with pytest.raises(BuildError, match=error):
+        build(root, root / "out", image="x")
+    assert not (root / "out").exists()
+
+
+@pytest.mark.parametrize(
+    ("original", "replacement", "name"),
+    [
+        ("class Spec(BaseModel):\n    value: int",
+         "class Spec(RootModel[list[str]]):\n    pass", "Spec"),
+        ("class Widget(BaseModel):",
+         "class Status(RootModel[list[str]]):\n    pass\nclass Widget(BaseModel):", "Status"),
+        ("class Spec(BaseModel):\n    value: int",
+         "class Nested(RootModel[list[str]]):\n    pass\n"
+         "class Spec(BaseModel):\n    value: list[Nested]", "Nested"),
+    ],
+)
+def test_reject_root_models(
+    tmp_path: Path, original: str, replacement: str, name: str
+) -> None:
+    """RootModel schemas differ from kdantic's generated object schemas."""
+    root = project(tmp_path)
+    sample = root / "src" / "sample.py"
+    source = sample.read_text().replace(
+        "from pydantic import BaseModel", "from pydantic import BaseModel, RootModel"
+    ).replace(original, replacement)
+    if name == "Status":
+        source = source.replace(
+            "    spec: Spec\n", "    spec: Spec\n    status: Status | None = None\n"
+        )
+    sample.write_text(source)
+    with pytest.raises(BuildError, match=f"{name}: RootModel schemas are unsupported"):
         build(root, root / "out", image="x")
     assert not (root / "out").exists()
 
