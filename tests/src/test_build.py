@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -61,7 +62,7 @@ def test_build_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert "replicas: 1" in (output / "helm/templates/operator.yaml").read_text()
     dockerfile = (output / "Dockerfile").read_text()
     assert "FROM python:3.13-slim AS build" in dockerfile
-    assert "USER operator" in dockerfile
+    assert "USER 10001:10001" in dockerfile
     assert "--no-install-project" not in dockerfile
     assert "default" not in dockerfile
     cmd = json.loads(dockerfile.split("CMD ", 1)[1])
@@ -99,6 +100,8 @@ def test_optional_webhooks_and_probe(tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.syspath_prepend(str(root))
     output = build(root, root / "out", image="example/operator:1")
     if not shutil.which("helm"):
+        if os.environ.get("BASED_OPERATORS_REQUIRE_HELM") == "1":
+            pytest.fail("Helm is required to lint the generated chart")
         pytest.skip("Helm is not installed")
     chart = str(output / "helm")
     base = ["helm", "template", "sample", chart, "--namespace", "demo"]

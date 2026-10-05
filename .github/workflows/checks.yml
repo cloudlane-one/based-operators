@@ -29,6 +29,13 @@ jobs:
 
       - name: Run Pytest
         run: uv run pytest tests
+        env:
+          BASED_OPERATORS_REQUIRE_HELM: "1"
+
+      - name: Smoke-test generated container
+        run: uv run pytest -q tests/src/test_container.py
+        env:
+          BASED_OPERATORS_CONTAINER_SMOKE: "1"
 
       - name: Check if docs build successfully
         run: uv run vtr build-docs

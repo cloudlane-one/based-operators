@@ -183,22 +183,23 @@ def _dockerfile(handler: str) -> str:
     return (
         "FROM python:3.13-slim AS build\n"
         "COPY --from=ghcr.io/astral-sh/uv:0.9.0 /uv /usr/local/bin/uv\n"
+        "ARG UV_DYNAMIC_VERSIONING_BYPASS\n"
+        "RUN apt-get update && apt-get install -y --no-install-recommends git "
+        "&& rm -rf /var/lib/apt/lists/*\n"
         "WORKDIR /operator\n"
         "COPY pyproject.toml uv.lock README.md ./\n"
         "COPY src/ ./src/\n"
         "COPY app/ ./app/\n"
         "RUN uv sync --frozen --no-dev\n"
         "FROM python:3.13-slim\n"
-        "RUN groupadd --gid 10001 operator && \\\n"
-        "    useradd --uid 10001 --gid operator --create-home operator\n"
         "WORKDIR /operator\n"
-        "COPY --from=build --chown=operator:operator /operator/.venv/ ./.venv/\n"
-        "COPY --from=build --chown=operator:operator /operator/src/ ./src/\n"
-        "COPY --from=build --chown=operator:operator /operator/app/ ./app/\n"
+        "COPY --from=build --chown=10001:10001 /operator/.venv/ ./.venv/\n"
+        "COPY --from=build --chown=10001:10001 /operator/src/ ./src/\n"
+        "COPY --from=build --chown=10001:10001 /operator/app/ ./app/\n"
         'ENV PATH="/operator/.venv/bin:$PATH" PYTHONPATH="/operator/src" '
         f'BASED_OPERATORS_HANDLER="{handler}"\n'
         "EXPOSE 8080\n"
-        "USER operator\n"
+        "USER 10001:10001\n"
         f"CMD {json.dumps(['python', '-c', launcher])}\n"
     )
 
