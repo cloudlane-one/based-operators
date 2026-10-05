@@ -171,6 +171,15 @@ def _accepts_input_name(model: type[BaseModel], field_name: str, input_name: str
     )
 
 
+def _check_envelope_aliases(model: type[BaseModel], reference: str) -> None:
+    """Require envelope fields to accept their canonical Kubernetes input keys."""
+    for name in ("spec", "status"):
+        if model.model_fields.get(name) is not None and not _accepts_input_name(model, name, name):
+            raise BuildError(
+                f"{reference}.{name}: incompatible input alias for Kubernetes key {name!r}"
+            )
+
+
 def _normalize_nested_required(annotation: object, schema: dict) -> None:
     """Normalize required fields in nested model schemas, including container items."""
     origin = get_origin(annotation)
@@ -594,11 +603,7 @@ def _generate_crds(
             spec_type = _model_type(spec.annotation, f"{reference}.spec")
             status = model.model_fields.get("status")
             status_type = _model_type(status.annotation, f"{reference}.status") if status else None
-            for name, field in (("spec", spec), ("status", status)):
-                if field is not None and not _accepts_input_name(model, name, name):
-                    raise BuildError(
-                        f"{reference}.{name}: incompatible input alias for Kubernetes key {name!r}"
-                    )
+            _check_envelope_aliases(model, reference)
             seen: set[type[BaseModel]] = set()
             _check_schema(spec_type, seen)
             if status_type:
