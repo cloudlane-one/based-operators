@@ -683,7 +683,10 @@ def _generate_crds(
             meta = resolve_metadata(model)
             if meta.scope != "Namespaced":
                 raise BuildError(f"{reference}: only Namespaced resources are supported")
-            if not re.fullmatch(r"[a-z0-9]([-a-z0-9.]*[a-z0-9])?", meta.group):
+            if not re.fullmatch(
+                r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*",
+                meta.group,
+            ):
                 raise BuildError(f"{reference}: invalid API group {meta.group!r}")
             if not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", meta.names.plural):
                 raise BuildError(f"{reference}: invalid resource plural {meta.names.plural!r}")
