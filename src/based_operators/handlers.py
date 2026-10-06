@@ -17,6 +17,16 @@ from based_operators.validation import InvalidDesiredInputError, respond_invalid
 log = logging.getLogger(__name__)
 
 
+def _is_async_fn(fn: Callable[..., Any] | None) -> bool:
+    if fn is None:
+        return False
+    if isinstance(fn, functools.partial):
+        return _is_async_fn(fn.func)
+    if hasattr(fn, "__wrapped__"):
+        return _is_async_fn(fn.__wrapped__)
+    return inspect.iscoroutinefunction(fn)
+
+
 def _optional_resource(annotation: Any, model: type[BaseModel]) -> bool:
     return annotation is not inspect.Parameter.empty and (
         get_origin(annotation) in (Union, types.UnionType)
@@ -104,7 +114,7 @@ def _register_function(
     )
     _verify_delete(fn, model, category, strict_delete, parameter_names)
     effective_category = "update" if category == "delete" and strict_delete else category
-    if inspect.iscoroutinefunction(fn):
+    if _is_async_fn(fn):
         @functools.wraps(fn)
         async def async_wrapper(**kwargs: Any) -> Any:
             if category == "daemon":

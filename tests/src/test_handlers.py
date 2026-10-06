@@ -1,6 +1,7 @@
 """Exercise model adapters through Kopf's actual invocation path."""
 
 import asyncio
+import functools
 import inspect
 from types import SimpleNamespace
 from typing import Literal, cast
@@ -8,7 +9,15 @@ from typing import Literal, cast
 import kopf
 import pytest
 from kopf._core.actions.invocation import invoke
-from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    AliasPath,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 import based_operators as tk
 import based_operators.handlers as handler_module
@@ -239,6 +248,37 @@ def test_async_daemon_waits_for_corrected_live_body():
     assert asyncio.run(invoke(handler.fn, kwargs={"body": body, "stopped": Stopped()})) == "fixed"
 
 
+def test_wrapped_async_daemon_registers_async_wrapper():
+    """Sync @wraps decorators around async daemons still register async wrappers."""
+    registry = kopf.OperatorRegistry()
+    body = {**BODY, "spec": {}}
+
+    def sync_wrapper_decorator(fn):
+        @functools.wraps(fn)
+        def wrapped(*args, **kwargs):
+            return fn(*args, **kwargs)
+
+        return wrapped
+
+    class Stopped(asyncio.Event):
+        def __bool__(self):
+            return self.is_set()
+
+        async def wait(self):
+            body["spec"] = {"greeting": "fixed"}
+            return await super().wait()
+
+    @tk.on.daemon(model=Greeting, registry=registry, retry_delay=0.001)
+    @sync_wrapper_decorator
+    async def daemon(resource: Greeting):
+        return resource.spec.greeting
+
+    handler = list(registry._spawning.get_all_handlers())[0]
+    assert handler_module._is_async_fn(handler.fn)
+    assert inspect.iscoroutinefunction(handler.fn)
+    assert asyncio.run(invoke(handler.fn, kwargs={"body": body, "stopped": Stopped()})) == "fixed"
+
+
 def test_field_scoped_old_new_stay_raw():
     """Field selection old/new retain Kopf's original scalar values."""
     registry = kopf.OperatorRegistry()
@@ -322,6 +362,53 @@ def test_stale_status_does_not_block_current_spec():
     assert cast(WithStatus, valid).status == Spec(greeting="observed")
     stale = validate_resource(WithStatus, {**BODY, "status": {"invalid": True}})
     assert cast(WithStatus, stale).status is None
+
+
+def test_namespace_is_synthesized_from_metadata_by_default():
+    """A plain namespace field is populated from metadata.namespace."""
+    from based_operators.validation import validate_resource
+
+    class RequiredNamespaceGreeting(Greeting):
+        namespace: str
+
+    resource = validate_resource(
+        RequiredNamespaceGreeting,
+        {
+            **BODY,
+            "metadata": {"name": "hello", "namespace": "operator-system"},
+        },
+    )
+
+    assert cast(RequiredNamespaceGreeting, resource).namespace == "operator-system"
+
+
+def test_namespace_alias_to_metadata_does_not_fail_extra_forbid():
+    """A metadata-backed namespace alias does not synthesize an extra top-level key."""
+    from based_operators.validation import validate_resource
+
+    class Metadata(BaseModel):
+        name: str
+        namespace: str
+
+    class AliasedNamespaceGreeting(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        api_version: Literal["example.com/v1"] = Field(validation_alias="apiVersion")
+        kind: Literal["Greeting"]
+        metadata: Metadata
+        namespace: str = Field(validation_alias=AliasPath("metadata", "namespace"))
+        spec: Spec
+
+    resource = validate_resource(
+        AliasedNamespaceGreeting,
+        {
+            **BODY,
+            "metadata": {"name": "hello", "namespace": "operator-system"},
+        },
+    )
+
+    validated = cast(AliasedNamespaceGreeting, resource)
+    assert validated.metadata.namespace == "operator-system"
+    assert validated.namespace == "operator-system"
 
 
 def test_spec_defaults_and_explicit_null_are_distinguished():

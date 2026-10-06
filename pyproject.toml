@@ -8,7 +8,6 @@ dependencies = [
     "kdantic @ git+https://github.com/sonyinteractive/kdantic.git@ec128034f8637fbd28d8d2a2087938593b6ddda1",
     "kopf==1.44.6",
     "pydantic==2.13.5",
-    "structlog>=26.1.0,<27.0.0",
 ]
 dynamic = ["version"]
 

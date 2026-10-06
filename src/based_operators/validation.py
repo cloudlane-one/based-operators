@@ -28,6 +28,7 @@ def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
         and "namespace" not in snapshot
         and isinstance(metadata, dict)
         and "namespace" in metadata
+        and not _namespace_already_aliased_to_metadata(model)
     ):
         snapshot["namespace"] = metadata["namespace"]
     try:
@@ -71,6 +72,24 @@ def _normalized_location(
             if location[:len(alias_prefix)] == alias_prefix:
                 return (field_name, *location[len(alias_prefix):])
     return location
+
+
+def _namespace_already_aliased_to_metadata(model: type[BaseModel]) -> bool:
+    """Return whether the namespace field already reads from metadata.namespace."""
+    field = model.model_fields.get("namespace")
+    if field is None or not model.model_config.get("validate_by_alias", True):
+        return False
+    input_alias = field.validation_alias or field.alias
+    if input_alias is None:
+        return False
+    aliases = input_alias.choices if isinstance(input_alias, AliasChoices) else (input_alias,)
+    for alias in aliases:
+        if not isinstance(alias, AliasPath):
+            continue
+        alias_path = alias.convert_to_aliases()
+        if alias_path[:2] == ["metadata", "namespace"]:
+            return True
+    return False
 
 
 def _raise_if_invalid_spec(model: type[BaseModel], error: ValidationError) -> None:
