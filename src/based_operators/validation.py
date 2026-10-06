@@ -61,7 +61,7 @@ def _raise_if_invalid_spec(error: ValidationError) -> None:
         or loc[0] not in {"spec", "status"}
     ]
     if spec_errors and not unrelated_errors:
-        raise InvalidDesiredInputError(spec_errors) from error
+        raise InvalidDesiredInputError(spec_errors) from None
 
 
 def respond_invalid(category: str, error: InvalidDesiredInputError, delay: float) -> None:
