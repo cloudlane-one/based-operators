@@ -117,9 +117,15 @@ def _check_schema(model: type[BaseModel], seen: set[type[BaseModel]]) -> None:
         raise BuildError(f"{model.__name__}: recursive schemas are unsupported")
     seen.add(model)
     try:
+        serialized_names: set[str] = set()
         for name, field in model.model_fields.items():
             full_name = f"{model.__name__}.{name}"
             serialized_name = field.serialization_alias or field.alias or name
+            if serialized_name in serialized_names:
+                raise BuildError(
+                    f"{full_name}: duplicate serialized property name {serialized_name!r}"
+                )
+            serialized_names.add(serialized_name)
             input_alias = field.validation_alias or field.alias
             accepts_serialized_name = (
                 (serialized_name == name and input_alias is None)
