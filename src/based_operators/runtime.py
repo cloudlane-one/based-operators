@@ -35,4 +35,13 @@ def _get_handler_path() -> str:
     return handler_path
 
 
-runpy.run_path(_get_handler_path())
+def _load_handler() -> None:
+    """Load the handler with its directory available for sibling imports."""
+    import sys
+
+    handler_path = os.path.abspath(_get_handler_path())
+    sys.path.insert(0, os.path.dirname(handler_path))
+    runpy.run_path(handler_path)
+
+
+_load_handler()
