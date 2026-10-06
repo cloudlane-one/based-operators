@@ -3,7 +3,7 @@
 from typing import Any
 
 import kopf
-from pydantic import BaseModel, ValidationError
+from pydantic import AliasChoices, AliasPath, BaseModel, ValidationError
 
 
 class InvalidDesiredInputError(Exception):
@@ -35,7 +35,9 @@ def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
     except ValidationError as error:
         errors = error.errors(include_input=False)
         if errors and all(
-            (loc := details.get("loc")) and loc[0] == "status" for details in errors
+            (loc := _normalized_location(model, details.get("loc")))
+            and loc[0] == "status"
+            for details in errors
         ):
             # Status is observed, not desired. If stale status is invalid, still
             # reconcile the current spec when the status field has a safe default.
@@ -43,21 +45,43 @@ def validate_resource[T: BaseModel](model: type[T], body: dict[str, Any]) -> T:
             try:
                 return model.model_validate(snapshot)
             except ValidationError as fallback_error:
-                _raise_if_invalid_spec(fallback_error)
+                _raise_if_invalid_spec(model, fallback_error)
                 raise
-        _raise_if_invalid_spec(error)
+        _raise_if_invalid_spec(model, error)
         raise
 
 
-def _raise_if_invalid_spec(error: ValidationError) -> None:
+def _normalized_location(
+    model: type[BaseModel], location: tuple[Any, ...] | None
+) -> tuple[Any, ...] | None:
+    """Normalize an envelope field's validation alias to its model field name."""
+    if not location:
+        return location
+    for field_name in ("spec", "status"):
+        field = model.model_fields.get(field_name)
+        if field is None or not model.model_config.get("validate_by_alias", True):
+            continue
+        input_alias = field.validation_alias or field.alias
+        if input_alias is None:
+            continue
+        aliases = input_alias.choices if isinstance(input_alias, AliasChoices) else (input_alias,)
+        for alias in aliases:
+            alias_path = alias.convert_to_aliases() if isinstance(alias, AliasPath) else [alias]
+            alias_prefix = tuple(alias_path)
+            if location[:len(alias_prefix)] == alias_prefix:
+                return (field_name, *location[len(alias_prefix):])
+    return location
+
+
+def _raise_if_invalid_spec(model: type[BaseModel], error: ValidationError) -> None:
     errors = error.errors(include_input=False)
     spec_errors = [
         details for details in errors
-        if (loc := details.get("loc")) and loc[0] == "spec"
+        if (loc := _normalized_location(model, details.get("loc"))) and loc[0] == "spec"
     ]
     unrelated_errors = [
         details for details in errors
-        if not (loc := details.get("loc"))
+        if not (loc := _normalized_location(model, details.get("loc")))
         or loc[0] not in {"spec", "status"}
     ]
     if spec_errors and not unrelated_errors:

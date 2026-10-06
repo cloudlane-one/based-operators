@@ -8,7 +8,7 @@ from typing import Literal, cast
 import kopf
 import pytest
 from kopf._core.actions.invocation import invoke
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 
 import based_operators as tk
 import based_operators.handlers as handler_module
@@ -337,6 +337,19 @@ def test_spec_defaults_and_explicit_null_are_distinguished():
 
     with pytest.raises(InvalidDesiredInputError):
         validate_resource(DefaultedSpec, {**BODY, "spec": None})
+
+
+def test_omitted_spec_with_validation_alias_is_invalid_desired_input():
+    """A missing required spec is classified through its validation alias."""
+    from based_operators.validation import InvalidDesiredInputError, validate_resource
+
+    class AliasedSpec(Greeting):
+        spec: Spec = Field(validation_alias=AliasChoices("desired", "spec"))
+
+    body_without_spec = {key: value for key, value in BODY.items() if key != "spec"}
+    with pytest.raises(InvalidDesiredInputError) as error:
+        validate_resource(AliasedSpec, body_without_spec)
+    assert error.value.locations == [("desired",)]
 
 
 def test_spec_field_validator_is_classified_as_invalid_desired_input():
