@@ -112,7 +112,7 @@ DEP002 = ["ipykernel", "jupyter", "jupytext", "rich"]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 
 [tool.coverage.run]
 source_dirs = ["src", "app"]
