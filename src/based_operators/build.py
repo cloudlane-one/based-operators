@@ -276,7 +276,7 @@ def _module_is_under_project(module: object, roots: set[Path]) -> bool:
     locations = [getattr(module, "__file__", None)]
     locations.extend(getattr(module, "__path__", ()) or ())
     spec = getattr(module, "__spec__", None)
-    if getattr(spec, "has_location", False):
+    if spec is not None and spec.has_location:
         locations.append(spec.origin)
     return any(
         location is not None
@@ -645,6 +645,16 @@ def _normalize_nullable(annotation: object, schema: dict) -> dict:
     return schema
 
 
+def _normalize_envelope_nullable(model: type[BaseModel], schema: dict) -> None:
+    """Preserve nullability for the declared spec and status envelope fields."""
+    for name in ("spec", "status"):
+        field = model.model_fields.get(name)
+        if field is not None:
+            schema["properties"][name] = _normalize_nullable(
+                field.annotation, schema["properties"][name]
+            )
+
+
 def _generate_crds(
     root: Path, references: list[str]
 ) -> tuple[dict[str, dict], list[tuple[str, str, str]]]:
@@ -683,12 +693,7 @@ def _generate_crds(
             build_k8s_model_schema(spec_type, {})
             version_block = _make_version_block(meta, spec_type, status_type, {})
             schema = version_block["schema"]["openAPIV3Schema"]
-            for name, field in (("spec", spec), ("status", status)):
-                if field is None:
-                    continue
-                schema["properties"][name] = _normalize_nullable(
-                    field.annotation, schema["properties"][name]
-                )
+            _normalize_envelope_nullable(model, schema)
             _normalize_model_required(spec_type, schema["properties"]["spec"])
             if status_type:
                 _normalize_model_required(status_type, schema["properties"]["status"])
