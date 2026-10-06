@@ -1,8 +1,8 @@
-site_name: Based PyProject
+site_name: Based Operators
 docs_dir: .
 site_url: !ENV SITE_URL
-repo_url: "https://github.com/cloudlane-one/based-pyproject"
-repo_name: "cloudlane-one/based-pyproject"
+repo_url: "https://github.com/cloudlane-one/based-operators"
+repo_name: "cloudlane-one/based-operators"
 edit_uri: "-/edit/main/docs/"
 site_dir: ../dist/docs
 use_directory_urls: false
@@ -17,6 +17,8 @@ nav:
       - how-to-check-quality.md
   - Reference:
       - Python API: ref-python-api.md
+      - Operator API: operator-api.md
+      - Build artifacts: build.md
       - ref-directory-structure.md
       - ref-code-conventions-tooling.md
 

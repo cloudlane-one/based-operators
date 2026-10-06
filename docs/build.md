@@ -1,0 +1,31 @@
+# Build downstream operator artifacts
+
+Configure the models and Kopf handler explicitly in the downstream project's `pyproject.toml`:
+
+```toml
+[tool.based-operators]
+models = ["my_operator.models:Widget", "my_operator.models:Gadget"]
+handler = "app/operator.py"
+```
+
+The handler must exist under `app/`. Model imports resolve from the project's `src/` directory; project-root model modules are rejected because they are not included in the generated container. Each model must be a Pydantic model with a `spec` model field and optionally a `status` model field. Set `apiVersion` to your API group/version and `kind` to your resource kind; kdantic resolves the remaining CRD metadata. Model imports run Python code, so only build trusted projects.
+
+```sh
+uv run app/cli.py build --project-root . --output dist/operator --image registry.example.com/operator:1
+docker build -f dist/operator/Dockerfile -t registry.example.com/operator:1 .
+helm install my-operator dist/operator/helm --namespace my-namespace
+```
+
+The build generates a multi-stage, non-root `Dockerfile`, `manifest.json` with SHA-256 checksums, and a chart with `Chart.yaml`, `values.yaml`, `values.schema.json`, `README.md`, namespace-scoped Role/RoleBinding, a single-replica Deployment and kdantic CRDs under `helm/crds/`. CRDs in `helm/crds/` are installed by Helm but **not upgraded or removed** by Helm; manage CRD schema upgrades separately. The output directory must not exist; artifacts are published together after generation succeeds. The Dockerfile assumes the project contains `src/`, `app/`, `README.md` and `uv.lock`, and that its lockfile supports `uv sync --frozen --no-dev` (including the downstream package). Build with the project as Docker context. Outside Helm, provide an explicit namespace, e.g. `docker run -e POD_NAMESPACE=my-namespace ...`, with namespace-scoped Kubernetes credentials. The Helm deployment sets `POD_NAMESPACE` from its release namespace.
+
+The build stage installs `git` to resolve pinned Git-source dependencies such as kdantic; the runtime stage does not include it. If the downstream project's build backend resolves its version from Git, build contexts without `.git` can pass `--build-arg UV_DYNAMIC_VERSIONING_BYPASS=VERSION` when using `uv-dynamic-versioning`; choose a version consistent with its lockfile. The chart is linted in CI for both standalone and admission configurations, and the generated image is built and smoke-tested in a downstream fixture.
+
+The generated image enables Kopf's `--liveness=http://0.0.0.0:8080/healthz`; the Deployment probes that endpoint and Kubernetes restarts an unresponsive process. Kopf's basic liveness endpoint confirms that its health-serving task responds, **not** that every controller task is making progress. `@kopf.on.probe` can add application-specific checks. The chart uses a `Recreate` strategy so a restart or upgrade does not intentionally overlap standalone pods. It does not add a readiness probe, because this operator does not serve regular traffic.
+
+### Optional admission webhooks
+
+By default, admission resources are disabled. Operators that register admission handlers must enable the chart option: Kopf refuses to start when handlers exist without a configured admission server. To enable them, set `webhooks.enabled=true`, provide at least one entry in `webhooks.validating` or `webhooks.mutating` with an explicit Kopf handler **ID** and a nonempty list of configured resource keys (`group/version/plural`), and supply the base64-encoded PEM `webhooks.caBundle`. For example, `webhooks.validating: [{id: validate-widget, resources: [widgets.example.com/v1/widgets]}]` routes only Widget requests to that handler. Give each handler a stable `id=` on `tk.on.validate` or `tk.on.mutate`; the chart maps Kubernetes admission requests to Kopf's `/ID` route. Configure a TLS certificate whose DNS SAN includes `RELEASE-webhook.NAMESPACE.svc`, signed by the provided CA. Use either `webhooks.existingSecret` (a Secret with keys `tls.crt`, `tls.key`, `ca.crt`), or supply the PEM strings `webhooks.tlsCrt` and `webhooks.tlsKey` for Helm to create that Secret. Do **not** put private keys into version-controlled values files or CLI arguments: Helm stores supplied values in its release metadata. Provision an existing Secret through your secret manager in production and restrict access to Helm release metadata. Keep the CA bundle consistent with `ca.crt`.
+
+The chart then creates an HTTPS Service and (as selected) cluster-scoped `ValidatingWebhookConfiguration` and/or `MutatingWebhookConfiguration` with fail-closed policy for CREATE/UPDATE requests on the configured models. Installing these resources requires cluster-level admission-registration permissions. The generated image loads Kopf's `WebhookServer` with the mounted TLS files only when the chart enables admission. This is **static** configuration: Kopf-managed webhook configurations must not also be enabled in downstream startup code; the runtime rejects a preconfigured admission server. Removing a chart release removes its admission configurations, and broken TLS or unavailable pods will block affected API writes until fixed. Certificates are not generated or rotated by this chart, and model-specific handler selectors/operations beyond the generated CREATE/UPDATE rules require maintaining webhook configurations separately. Test certificate issuance, request routing, and rotation against your cluster before using admission in production.
+
+Only namespaced resources watched in the Helm release namespace and `--standalone` mode are supported. Cluster-scoped resources, cross-namespace watching, multiple replicas and `--mode ha` are rejected or not generated: there is no distributed leader election or high-availability guarantee. Supported schema field types are `str`, `int`, `float`, `bool`, string `Literal`, enums with homogeneous primitive values, nested Pydantic models, typed lists and maps with `str` keys; each can be optional with `None`. Other leaf types, untyped collections and non-optional unions such as `int | str` are rejected rather than silently converted to strings. Explicit field defaults must be JSON-serializable. No runtime image is built or pushed by this command.

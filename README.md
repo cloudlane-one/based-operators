@@ -1,25 +1,20 @@
-# Based PyProject
+# Based Operators
 
-This repository is intended as a template for quickly setting up modern Python projects including dependency management, linting, docs generation, continuous integration and AI tooling.
+Model-first Python operators powered by [Kopf](https://kopf.readthedocs.io/) and [kdantic](https://github.com/sonyinteractive/kdantic).
 
-> Please replace this with your own documentation.
+See [the documentation](docs/index.md) for usage and compatibility limits.
 
-## How to fork this repo as a template
+This repository retains its original MIT licensing and contribution guide.
 
-> On GitHub, you can use this repo as a template for creating a new repository instead of forking via the default mechanism.
+```python
+import based_operators as tk
 
-This repo is intended to get you up and running with a new Python project ASAP, so there are only a few places requiring manual changes after you created your fork:
+@tk.on.create(model=Greeting)
+@tk.on.resume(model=Greeting)
+def reconcile(resource: Greeting, patch: tk.Patch):
+    print(resource.spec)
+```
 
-- `/docs`
-  - `.config.yml`: Change `site_name`, `repo_url` and `repo_name`
-  - `index.md`: Change title and contents
-  - `ref-python-api.md`: Change title to your *library name*
-- `/src`
-  - `based_pyproject`: rename folder to your *library name* (should be normalized version of your package name)
-- `/pyproject.toml`
-  - Change `project.name` to your *package name*
-  - Adapt `project.description`
-  - Change `tool.deptry.known_first_party` to contain only your *library name*
-  - *Optionally:* Uncomment `[tool.semantic_release.remote]` section if using ForgeJo / Gitea as primary host
-  - *Optionally:* [Import](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository#importing-a-ruleset) the main branch protection ruleset `/.github/rulesets/main.json` to your new repo if using GitHub
-- `/README.md` (this file): Change title and contents
+`Greeting` must be a Pydantic v2 resource model with a `spec` field and a
+kdantic-compatible Kubernetes identity. See the [compatibility matrix](docs/operator-api.md)
+before using typed deletion, admission, daemons, or HA deployments.

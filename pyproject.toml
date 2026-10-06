@@ -1,10 +1,14 @@
 [project]
-name = "based-pyproject"
-description = "Repository template for a modern Python development project."
+name = "based-operators"
+description = "Model-first Kubernetes operators using Kopf and kdantic."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13,<4"
-dependencies = ["structlog>=26.1.0,<27.0.0"]
+dependencies = [
+    "kdantic @ git+https://github.com/sonyinteractive/kdantic.git@ec128034f8637fbd28d8d2a2087938593b6ddda1",
+    "kopf==1.44.6",
+    "pydantic==2.13.5",
+]
 dynamic = ["version"]
 
 [build-system]
@@ -62,6 +66,9 @@ test = ["pytest>=9.0.3,<10.0.0", "pytest-cov>=7.1.0,<8.0.0"]
 [tool.uv]
 add-bounds = "major"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
 
@@ -97,7 +104,7 @@ reportOverlappingOverload = true
 line-length = 100
 
 [tool.deptry]
-known_first_party = ["based_pyproject"]
+known_first_party = ["based_operators"]
 non_dev_dependency_groups = ["app"]
 
 [tool.deptry.per_rule_ignores]
@@ -105,7 +112,7 @@ DEP002 = ["ipykernel", "jupyter", "jupytext", "rich"]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 
 [tool.coverage.run]
 source_dirs = ["src", "app"]
