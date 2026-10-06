@@ -25,7 +25,7 @@ from based_operators.build import (
     _normalize_nullable,
     build,
 )
-from based_operators.cli import main
+from app.cli import main
 
 
 def project(

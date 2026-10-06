@@ -12,9 +12,6 @@ dependencies = [
 ]
 dynamic = ["version"]
 
-[project.scripts]
-based-operators = "based_operators.cli:main"
-
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
