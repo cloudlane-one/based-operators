@@ -5,7 +5,7 @@ import inspect
 import logging
 import types
 from collections.abc import Callable
-from typing import Any, Union, get_args, get_origin, get_type_hints
+from typing import Any, Union, cast, get_args, get_origin, get_type_hints
 
 import kopf
 from pydantic import BaseModel
@@ -22,8 +22,9 @@ def _is_async_fn(fn: Callable[..., Any] | None) -> bool:
         return False
     if isinstance(fn, functools.partial):
         return _is_async_fn(fn.func)
-    if hasattr(fn, "__wrapped__"):
-        return _is_async_fn(fn.__wrapped__)
+    wrapped = getattr(fn, "__wrapped__", None)
+    if wrapped is not None:
+        return _is_async_fn(cast(Callable[..., Any], wrapped))
     return inspect.iscoroutinefunction(fn)
 
 
