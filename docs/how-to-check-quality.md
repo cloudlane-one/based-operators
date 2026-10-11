@@ -26,7 +26,7 @@ uv run ruff format --check .
 uv run pyright .
 uv run pytest tests
 uv run deptry .
-uv run licensecheck --zero --ignore-licenses UNKNOWN --ignore-packages mypy-extensions -g app -g docs
+uv run licensecheck --zero --ignore-licenses UNKNOWN --ignore-packages mypy-extensions mkdocs-typer2 -g app -g docs
 uv run pip-audit .
 SITE_URL="https://example.com/" uv run vtr build-docs
 ```

@@ -6,8 +6,10 @@
     {
       "label": "assert-license-compliance",
       "detail": "Assert: Compatibility between project and deps licenses",
+      // mypy-extensions and mkdocs-typer2 ship no license metadata, so their
+      // license cannot be read from the installed distribution; both are MIT.
       "type": "shell",
-      "command": "uv run licensecheck --zero --ignore-licenses UNKNOWN --ignore-packages mypy-extensions -g app -g docs",
+      "command": "uv run licensecheck --zero --ignore-licenses UNKNOWN --ignore-packages mypy-extensions mkdocs-typer2 -g app -g docs",
       "problemMatcher": []
     },
     {
