@@ -19,7 +19,7 @@ jobs:
         uses: astral-sh/setup-uv@v10.0.1
 
       - name: Install dependencies
-        run: uv sync --group ci
+        run: uv sync --python 3.13 --group ci
 
       - name: Run Ruff
         run: uv run ruff check .
