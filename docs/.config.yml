@@ -16,9 +16,13 @@ nav:
       - how-to-add-dependencies.md
       - how-to-check-quality.md
       - how-to-extend-the-crd-module.md
+  - Guides:
+      - How to define custom resources: how-to-define-custom-resources.md
+      - How to write handlers: how-to-write-handlers.md
   - Reference:
       - Python API: ref-python-api.md
-      - Custom resources and CRDs: crd-api.md
+      - Custom resources and CRDs: ref-crd.md
+      - Handlers and reconciliation: ref-handlers.md
       - ref-directory-structure.md
       - ref-code-conventions-tooling.md
 
