@@ -1,11 +1,15 @@
 [project]
-name = "based-pyproject"
-description = "Repository template for a modern Python development project."
+name = "based-operators"
+description = "Model-first Python operator toolkit: typed Pydantic custom resources and CRD generation."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13,<4"
-dependencies = ["structlog>=26.1.0,<27.0.0"]
+dependencies = ["pydantic>=2.11.0,<3.0.0"]
 dynamic = ["version"]
+
+[project.optional-dependencies]
+# Optional plain-YAML rendering of generated manifests.
+yaml = ["pyyaml>=6.0.1,<7.0.0"]
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
@@ -57,7 +61,7 @@ app = [
     "rich>=15.0.0,<16.0.0",
 ]
 # Test runners and coverage tools.
-test = ["pytest>=9.0.3,<10.0.0", "pytest-cov>=7.1.0,<8.0.0"]
+test = ["pytest>=9.0.3,<10.0.0", "pytest-cov>=7.1.0,<8.0.0", "pyyaml>=6.0.1,<7.0.0"]
 
 [tool.uv]
 add-bounds = "major"
@@ -97,7 +101,7 @@ reportOverlappingOverload = true
 line-length = 100
 
 [tool.deptry]
-known_first_party = ["based_pyproject"]
+known_first_party = ["based_operators"]
 non_dev_dependency_groups = ["app"]
 
 [tool.deptry.per_rule_ignores]
