@@ -1,10 +1,13 @@
 [project]
 name = "based-operators"
-description = "Model-first Python operator toolkit: typed Pydantic custom resources and CRD generation."
+description = "Model-first Python operator toolkit: typed Pydantic custom resources, CRD generation and a typed kopf handler interface."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13,<4"
-dependencies = ["pydantic>=2.11.0,<3.0.0"]
+dependencies = [
+    "kopf>=1.44.6,<2.0.0",
+    "pydantic>=2.11.0,<3.0.0",
+]
 dynamic = ["version"]
 
 [project.optional-dependencies]

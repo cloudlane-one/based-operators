@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import NoneType
-from typing import Any, ClassVar, Generic, TypeVar, get_args
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, get_args
 from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -13,6 +13,9 @@ from based_operators.crd.config import ResourceConfig, Scope
 from based_operators.crd.errors import ResourceDefinitionError
 from based_operators.crd.metadata import ObjectMeta
 
+if TYPE_CHECKING:
+    from based_operators.handlers import ResourceHandlers
+
 SpecT = TypeVar("SpecT", bound=BaseModel)
 """The concrete Pydantic model type describing a resource's ``spec``."""
 
@@ -21,6 +24,34 @@ StatusT = TypeVar("StatusT", default=NoneType)
 
 Defaults to :data:`types.NoneType`, which marks a resource as status-less.
 """
+
+
+class _HandlersAccessor:
+    """Descriptor exposing the kopf handler namespace of a resource class.
+
+    Accessing ``<Resource>.on`` returns the
+    :class:`~based_operators.handlers.ResourceHandlers` namespace shared by that
+    resource class. The handler module is imported lazily so that the CRD layer
+    keeps working without the kopf interface being loaded or kopf installed.
+    """
+
+    def __get__(
+        self,
+        instance: Any,
+        owner: type[CustomResource[Any, Any]],
+    ) -> ResourceHandlers:
+        """Return the handler namespace bound to the owning resource class.
+
+        Args:
+            instance: The resource instance, when accessed through an instance.
+            owner: The owning class, when accessed through the class.
+
+        Returns:
+            The shared handler namespace of the owning resource class.
+        """
+        from based_operators.handlers import handler_namespace
+
+        return handler_namespace(owner)
 
 
 class CustomResource(BaseModel, Generic[SpecT, StatusT]):
@@ -44,6 +75,13 @@ class CustomResource(BaseModel, Generic[SpecT, StatusT]):
 
     resource_config: ClassVar[ResourceConfig]
     """The :class:`~based_operators.crd.ResourceConfig` describing this resource."""
+
+    on: ClassVar[_HandlersAccessor] = _HandlersAccessor()
+    """The kopf handler namespace, e.g. ``@<Resource>.on.create``.
+
+    See :class:`~based_operators.handlers.ResourceHandlers` for the available
+    decorators. The namespace is shared per resource class.
+    """
 
     apiVersion: str = Field(  # noqa: N815 - Kubernetes wire name
         default="",
