@@ -1,0 +1,13 @@
+{{ .Chart.Name }} {{ .Chart.Version }} was installed as "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+The CRDs are installed from the chart's crds/ directory. Helm never upgrades or
+deletes that directory, so apply CRD changes by hand:
+    kubectl apply -f <chart>/crds/
+
+Watch the operator:
+    kubectl --namespace {{ .Release.Namespace }} logs --follow deploy/{{ include "based-operator.fullname" . }}
+{{- if .Values.webhook.enabled }}
+
+The admission webhook is served at {{ printf "%s.%s.svc:%v" (include "based-operator.fullname" .) .Release.Namespace .Values.webhook.port }} and its
+configuration is managed by the operator itself.
+{{- end }}

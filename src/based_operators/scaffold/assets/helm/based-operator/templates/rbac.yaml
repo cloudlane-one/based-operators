@@ -1,0 +1,51 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "based-operator.fullname" . }}
+  labels:
+    {{- include "based-operator.labels" . | nindent 4 }}
+rules:
+  # kopf keeps one watch per namespace and starts and stops them as namespaces
+  # appear and disappear, so it has to be able to list and watch them.
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+  # One rule per CRD shipped in crds/, so the operator can reconcile exactly the
+  # resources this chart installs -- and nothing else.
+  {{- range $path, $_ := .Files.Glob "crds/*.yaml" }}
+  {{- $crd := $.Files.Get $path | fromYaml }}
+  {{- $plural := $crd.spec.names.plural }}
+  - apiGroups: [{{ $crd.spec.group | quote }}]
+    resources:
+      - {{ $plural | quote }}
+      - {{ printf "%s/status" $plural | quote }}
+      - {{ printf "%s/finalizers" $plural | quote }}
+    verbs: [get, list, watch, create, update, patch, delete]
+  {{- end }}
+  # Progress is reported as Kubernetes events.
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+  {{- if .Values.webhook.enabled }}
+  # kopf creates and keeps the webhook configurations in sync itself.
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingwebhookconfigurations, mutatingwebhookconfigurations]
+    verbs: [create, patch]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "based-operator.fullname" . }}
+  labels:
+    {{- include "based-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "based-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "based-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

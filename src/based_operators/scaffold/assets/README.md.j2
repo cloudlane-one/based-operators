@@ -1,0 +1,69 @@
+{% set kinds = resources | map(attribute="kind") | join(", ") -%}
+{% set plural = "" if resources | length == 1 else "s" -%}
+# {{ name }}
+
+An operator image and a Helm chart for the **{{ kinds }}** custom resource{{ plural }}
+of this project, scaffolded by `based-operators scaffold`.
+
+## What was written
+
+| Path | Purpose |
+| --- | --- |
+| `Dockerfile` | The operator image: the project, plus kopf running the entry point. |
+| `helm/{{ chart_name }}/` | The Helm chart that installs the CRDs and the operator. |
+
+The chart is a plain, self-contained chart: it ships one CRD document per
+resource under `crds/`, derives its RBAC from them, and takes the image it
+deploys from `values.yaml`. `helm show values ./{{ chart_ref }}` lists every knob.
+
+## Build and push the image
+
+The build context is the project root, because the image installs the project:
+
+```shell
+docker build -f {{ dockerfile_ref }} -t {{ image }} .
+docker push {{ image }}
+```
+
+## Install the chart
+
+```shell
+helm install {{ name }} ./{{ chart_ref }} --namespace {{ namespace }} --create-namespace
+```
+
+The CRDs are installed from `crds/` before the operator starts. Helm never
+upgrades or deletes that directory, so a CRD change has to be applied by hand:
+
+```shell
+kubectl apply -f {{ chart_ref }}/crds/
+```
+
+## Watch the operator
+
+```shell
+kubectl --namespace {{ namespace }} logs --follow deploy/{{ name }}-{{ chart_name }}
+```
+{% if webhook %}
+
+## Admission webhooks
+
+The webhook server is part of `based-operators` itself: the image runs the
+operator with `kopf run ... -m {{ webhook_module }}`, and the module reads
+everything deployment-specific from the environment the chart sets. All that is
+needed alongside it is the deployment — a cert-manager `Certificate`, a `Service`
+the API server can reach, and permission to manage the webhook configurations.
+
+It needs [cert-manager](https://cert-manager.io/) in the cluster; point
+`webhook.certManager.issuerRef` at your own CA-backed issuer to avoid the
+self-signed one, or set `webhook.enabled=false` to deploy without webhooks.
+{% endif %}
+
+## Where the resources came from
+
+The scaffold was derived from `{{ operator_ref }}`. Re-run
+`based-operators scaffold {{ operator_ref }} -o {{ output_ref }} --force` after
+changing the resources.
+
+{% for resource in resources %}
+- `{{ resource.api_version }} {{ resource.kind }}` — scope `{{ resource.scope }}`, plural `{{ resource.plural }}`, CRD `{{ resource.crd_name }}`
+{% endfor %}

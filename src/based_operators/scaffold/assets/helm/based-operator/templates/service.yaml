@@ -1,0 +1,20 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "based-operator.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "based-operator.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    # The API server calls the port kopf advertises, so the service has to
+    # listen on the very same port the container does.
+    - name: webhook
+      port: {{ .Values.webhook.port }}
+      targetPort: webhook
+      protocol: TCP
+  selector:
+    {{- include "based-operator.selectorLabels" . | nindent 4 }}
+{{- end }}

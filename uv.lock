@@ -151,6 +151,15 @@ wheels = [
 ]
 
 [[package]]
+name = "annotated-doc"
+version = "0.0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/8e/38aa427ed5402449e226975b649c5dc73ccadfefeb95e6aecb8f8ea4b6b6/annotated_doc-0.0.5.tar.gz", hash = "sha256:c7e58ce09192557605d8bbd92836d7e1d520ac9580096042c0bfd197efacf1bb", size = 10758, upload-time = "2026-07-28T13:50:58.129Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/30/e900b21425a860e195f32e37657aa1f7c7f2b1bfb26f03ca209b90933c06/annotated_doc-0.0.5-py3-none-any.whl", hash = "sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101", size = 5302, upload-time = "2026-07-28T13:50:57.239Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -302,13 +311,11 @@ wheels = [
 name = "based-operators"
 source = { editable = "." }
 dependencies = [
+    { name = "jinja2" },
     { name = "kopf" },
     { name = "pydantic" },
-]
-
-[package.optional-dependencies]
-yaml = [
     { name = "pyyaml" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -336,6 +343,7 @@ ci = [
     { name = "mkdocs-macros-plugin" },
     { name = "mkdocs-material" },
     { name = "mkdocs-section-index" },
+    { name = "mkdocs-typer2", extra = ["mkdocs"] },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pip-audit" },
     { name = "properdocs" },
@@ -343,7 +351,6 @@ ci = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "python-semantic-release" },
-    { name = "pyyaml" },
     { name = "rich" },
     { name = "ruff" },
     { name = "vscode-task-runner" },
@@ -365,12 +372,12 @@ dev = [
     { name = "mkdocs-macros-plugin" },
     { name = "mkdocs-material" },
     { name = "mkdocs-section-index" },
+    { name = "mkdocs-typer2", extra = ["mkdocs"] },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pip-audit" },
     { name = "properdocs" },
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pyyaml" },
     { name = "rich" },
     { name = "ruff" },
     { name = "vscode-task-runner" },
@@ -384,6 +391,7 @@ docs = [
     { name = "mkdocs-macros-plugin" },
     { name = "mkdocs-material" },
     { name = "mkdocs-section-index" },
+    { name = "mkdocs-typer2", extra = ["mkdocs"] },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "properdocs" },
 ]
@@ -398,16 +406,16 @@ lint = [
 test = [
     { name = "pytest" },
     { name = "pytest-cov" },
-    { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "jinja2", specifier = ">=3.1.6,<4.0.0" },
     { name = "kopf", specifier = ">=1.44.6,<2.0.0" },
     { name = "pydantic", specifier = ">=2.11.0,<3.0.0" },
-    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6.0.1,<7.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
+    { name = "typer", specifier = ">=0.27.3,<1.0.0" },
 ]
-provides-extras = ["yaml"]
 
 [package.metadata.requires-dev]
 app = [
@@ -434,6 +442,7 @@ ci = [
     { name = "mkdocs-macros-plugin", specifier = ">=1.5.0,<2.0.0" },
     { name = "mkdocs-material", specifier = ">=9.7.6,<10.0.0" },
     { name = "mkdocs-section-index", specifier = ">=0.3.12,<0.4.0" },
+    { name = "mkdocs-typer2", extras = ["mkdocs"], specifier = ">=0.4.1,<0.5.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4,<2.0.0" },
     { name = "pip-audit", specifier = ">=2.10.0,<3.0.0" },
     { name = "properdocs", specifier = ">=1.6.7,<2.0.0" },
@@ -441,7 +450,6 @@ ci = [
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
     { name = "python-semantic-release", specifier = ">=10.6.2,<11.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
     { name = "rich", specifier = ">=15.0.0,<16.0.0" },
     { name = "ruff", specifier = ">=0.16.6,<0.17.0" },
     { name = "vscode-task-runner", specifier = ">=3.0.1,<4.0.0" },
@@ -463,12 +471,12 @@ dev = [
     { name = "mkdocs-macros-plugin", specifier = ">=1.5.0,<2.0.0" },
     { name = "mkdocs-material", specifier = ">=9.7.6,<10.0.0" },
     { name = "mkdocs-section-index", specifier = ">=0.3.12,<0.4.0" },
+    { name = "mkdocs-typer2", extras = ["mkdocs"], specifier = ">=0.4.1,<0.5.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4,<2.0.0" },
     { name = "pip-audit", specifier = ">=2.10.0,<3.0.0" },
     { name = "properdocs", specifier = ">=1.6.7,<2.0.0" },
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
     { name = "rich", specifier = ">=15.0.0,<16.0.0" },
     { name = "ruff", specifier = ">=0.16.6,<0.17.0" },
     { name = "vscode-task-runner", specifier = ">=3.0.1,<4.0.0" },
@@ -482,6 +490,7 @@ docs = [
     { name = "mkdocs-macros-plugin", specifier = ">=1.5.0,<2.0.0" },
     { name = "mkdocs-material", specifier = ">=9.7.6,<10.0.0" },
     { name = "mkdocs-section-index", specifier = ">=0.3.12,<0.4.0" },
+    { name = "mkdocs-typer2", extras = ["mkdocs"], specifier = ">=0.4.1,<0.5.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4,<2.0.0" },
     { name = "properdocs", specifier = ">=1.6.7,<2.0.0" },
 ]
@@ -496,7 +505,6 @@ lint = [
 test = [
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
-    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
 ]
 
 [[package]]
@@ -2099,6 +2107,25 @@ wheels = [
 ]
 
 [[package]]
+name = "mkdocs-typer2"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown" },
+    { name = "pydantic" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cb/53/09beebd17749d6fa27b7ff380e8007fd1f7afcde70ac9743146ffcccb045/mkdocs_typer2-0.4.1.tar.gz", hash = "sha256:b00a68d71c8b6f9efc75005619fe1da2036ea3c24b67b9978086d69389247ada", size = 45549, upload-time = "2026-06-17T12:51:02.54Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/09/2633221fcd537b55c425950c8af23cb38d5760dc0a8b8f1bd53d38f7b5e6/mkdocs_typer2-0.4.1-py3-none-any.whl", hash = "sha256:9ecde0c020ffdf5cffd7cef3cc65906b38caaa3887c0f3b5ffbeb73b7887b34c", size = 24587, upload-time = "2026-06-17T12:51:01.557Z" },
+]
+
+[package.optional-dependencies]
+mkdocs = [
+    { name = "mkdocs" },
+]
+
+[[package]]
 name = "mkdocstrings"
 version = "1.0.6"
 source = { registry = "https://pypi.org/simple" }
@@ -3652,6 +3679,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/2c/2e/a7fbfe268c8a3b32546930c0297c101d65a4a14c304ad5790a9f478f0e4e/traitlets-5.16.1.tar.gz", hash = "sha256:ed900c2b631aa3a112811139fa97b8d2c3bad5e989656bba4b7e52c7852c18c1", size = 166137, upload-time = "2026-08-03T08:32:36.848Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ad/66/0d785f0bc5e4315a96c989bb476d0fc07ea4f85132550c7b156ca2035d52/traitlets-5.16.1-py3-none-any.whl", hash = "sha256:f775618166caa0396c8e337099240f2bd3e5e917d203b2e6fbe21a58d3cb1f6b", size = 86211, upload-time = "2026-08-03T08:32:34.48Z" },
+]
+
+[[package]]
+name = "typer"
+version = "0.27.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "rich" },
+    { name = "shellingham" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/03/51/d33db42cc72ffd8c30777547b42d01f0cbf9d95a770457698d0174b3ed71/typer-0.27.3.tar.gz", hash = "sha256:d0396f770a560ab1b0a8504e13b5f254b728cedb05c61cf0359e944e50ce8901", size = 205303, upload-time = "2026-10-06T17:24:16.61Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/ea/2e31b67051e91a133189e9c000c222502ddc6969856416de0d095de4c0b0/typer-0.27.3-py3-none-any.whl", hash = "sha256:e50022f28b82a86313e54501317a1db64bf8f8d036ff8cfe5ca7e47675454aff", size = 123312, upload-time = "2026-10-06T17:24:15.054Z" },
 ]
 
 [[package]]

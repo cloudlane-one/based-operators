@@ -1,0 +1,13 @@
+# Build artifacts and environments the image must not contain.
+#
+# The generated Dockerfile installs the build context with `pip install .`, so
+# everything here would otherwise be copied into the image.
+.venv/
+build/
+dist/
+docs/dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage

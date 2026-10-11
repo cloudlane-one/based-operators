@@ -44,5 +44,5 @@ Every command should exit clean. `pytest` reporting skips is fine; failures are 
 - **Docs execute code** — pages run their fenced blocks at build time via
   `markdown-exec`. Blocks that share state need a matching `session="..."` attribute,
   or the later block sees a `NameError`.
-- **The API-server suite is opt-in** — `tests/src/test_integration.py` skips unless
+- **The end-to-end suite is opt-in** — `tests/test_integration.py` skips unless
   `BASED_OPERATORS_K8S_INTEGRATION=1` and a cluster is reachable via `kubectl`.

@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "based-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "based-operator.labels" . | nindent 4 }}
+spec:
+  # Two operators reconciling the same objects collide, so there is exactly one
+  # replica and it is replaced rather than rolled over during upgrades.
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "based-operator.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "based-operator.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "based-operator.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: operator
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.webhook.port }}
+              protocol: TCP
+            {{- end }}
+          # The command baked into the image runs kopf with
+          # `--liveness=http://0.0.0.0:8080/healthz`, so this probe matches it
+          # without any chart-side configuration.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- if .Values.webhook.enabled }}
+          env:
+            - name: WEBHOOK_CERT_DIR
+              value: /etc/webhook/certs
+            - name: WEBHOOK_PORT
+              value: {{ .Values.webhook.port | quote }}
+            - name: WEBHOOK_HOST
+              value: {{ printf "%s.%s.svc" (include "based-operator.fullname" .) .Release.Namespace | quote }}
+            - name: WEBHOOK_MANAGED
+              value: {{ printf "%s-webhooks" (include "based-operator.fullname" .) | quote }}
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /etc/webhook/certs
+              readOnly: true
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.webhook.enabled }}
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "based-operator.webhookSecretName" . }}
+            defaultMode: 0400
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

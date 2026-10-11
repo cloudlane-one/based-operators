@@ -21,6 +21,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --python 3.13 --group ci
 
+      # The test suite lints the scaffolded Helm chart (tests/test_helm.py); helm
+      # has to be present so that lint actually runs instead of skipping.
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
       - name: Run Ruff
         run: uv run ruff check .
 
@@ -41,3 +46,55 @@ jobs:
 
       - name: Check unused undeclared deps
         run: uv run vtr assert-no-deptry-issues
+
+  image-smoke:
+    name: Image smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.0.1
+
+      - name: Install dependencies
+        run: uv sync --python 3.13 --group ci
+
+      # Builds the image from the generated Dockerfile and runs a couple of smoke
+      # checks inside it (tests/test_image.py).
+      - name: Build and smoke-test the generated image
+        env:
+          BASED_OPERATORS_IMAGE_SMOKE: "1"
+        run: uv run pytest tests/test_image.py -v
+
+  end-to-end:
+    name: End-to-end on a kind cluster
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.0.1
+
+      - name: Install dependencies
+        run: uv sync --python 3.13 --group ci
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      # A throwaway cluster pinned to the version the suite asserts against. The
+      # suite builds the operator image and loads it with `kind load`, because it
+      # detects the kind context (tests/test_integration.py).
+      - name: Create a kind cluster
+        uses: helm/kind-action@v1
+        with:
+          node_image: kindest/node:v1.31.14
+
+      - name: Run the end-to-end suite
+        env:
+          BASED_OPERATORS_K8S_INTEGRATION: "1"
+          BASED_OPERATORS_K8S_VERSION: "1.31"
+        run: uv run pytest tests/test_integration.py -v
