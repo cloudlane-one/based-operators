@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -16,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[2]
 """The root of the repository the CLI is run from."""
 
 RUNNER = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+"""Matches the SGR escape sequences rich styles the rendered help with."""
 
 OPERATOR_SOURCE = '''
 """The operator entry point of the test project."""
@@ -128,13 +133,20 @@ def test_failures_are_one_line_and_non_zero(project: Path) -> None:
 
 
 def test_help_documents_the_options() -> None:
-    """The command documents its switches."""
-    result = RUNNER.invoke(app, ["scaffold", "--help"])
+    """The command documents its switches.
+
+    The width is pinned and the styling stripped: rich lays the help out for the
+    terminal it finds, abbreviating a long option name on a narrow one and
+    splitting a name across escape sequences when it colours it, so the rendered
+    text is not a stable place to look for the names.
+    """
+    result = RUNNER.invoke(app, ["scaffold", "--help"], env={**os.environ, "COLUMNS": "200"})
 
     assert result.exit_code == 0
-    assert "--webhook" in result.output
-    assert "--image" in result.output
-    assert "--python-version" in result.output
+    help_text = _ANSI.sub("", result.output)
+    assert "--webhook" in help_text
+    assert "--image" in help_text
+    assert "--python-version" in help_text
 
 
 def test_entry_point_is_required() -> None:

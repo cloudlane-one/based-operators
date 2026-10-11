@@ -137,6 +137,39 @@ def _wait_for(description: str, probe: Callable[[], bool], timeout: float = 300.
     raise AssertionError(f"timed out after {timeout:.0f}s waiting for {description}")
 
 
+def _collect(*args: str) -> str:
+    """Run ``kubectl`` and return its combined output, without raising.
+
+    Args:
+        *args: Arguments passed to ``kubectl``.
+
+    Returns:
+        The combined standard output and error, stripped.
+    """
+    result = _kubectl(*args, check=False)
+    return (result.stdout + result.stderr).strip()
+
+
+def _operator_diagnostics(namespace: str, deployment: str, resource: str) -> str:
+    """Describe the running operator and the resource it did not reconcile.
+
+    Args:
+        namespace: The namespace the operator runs in.
+        deployment: The name of the operator's Deployment.
+        resource: The name of the custom resource that was not reconciled.
+
+    Returns:
+        A human-readable dump to attach to a failure.
+    """
+    sections = {
+        "operator logs": ("logs", f"deployment/{deployment}", "-n", namespace, "--tail=200"),
+        "pods": ("get", "pods", "-n", namespace, "-o", "wide"),
+        "events": ("get", "events", "-n", namespace, "--sort-by=.lastTimestamp"),
+        "resource": ("get", "widget", resource, "-n", namespace, "-o", "yaml"),
+    }
+    return "\n\n".join(f"--- {title} ---\n{_collect(*args)}" for title, args in sections.items())
+
+
 # -- the API server --------------------------------------------------------------
 
 
@@ -188,7 +221,9 @@ def test_valid_resource_defaults_and_pruning(namespace: str) -> None:
         "metadata": {"name": name, "namespace": namespace},
         "spec": {"name": "hello", "unknownField": "pruned"},
     }
-    _kubectl("apply", "-f", "-", stdin=json.dumps(body))
+    # Client-side strict validation would reject the unknown field before the
+    # server could prune it, so it is turned off to exercise pruning itself.
+    _kubectl("apply", "--validate=false", "-f", "-", stdin=json.dumps(body))
 
     stored = json.loads(_kubectl("get", "integration", name, "-n", namespace, "-o", "json").stdout)
 
@@ -357,7 +392,11 @@ def test_operator_reconciles_a_resource(deployed: dict[str, Any]) -> None:
         status = json.loads(result.stdout).get("status") or {}
         return status.get("phase") == "Ready" and status.get("ready") == 3
 
-    _wait_for("the operator to reconcile the widget", reconciled)
+    try:
+        _wait_for("the operator to reconcile the widget", reconciled)
+    except AssertionError as error:
+        diagnostics = _operator_diagnostics(namespace, deployed["deployment"], name)
+        raise AssertionError(f"{error}\n\n{diagnostics}") from error
 
     stored = json.loads(_kubectl("get", "widget", name, "-n", namespace, "-o", "json").stdout)
     assert stored["status"]["phase"] == "Ready"
