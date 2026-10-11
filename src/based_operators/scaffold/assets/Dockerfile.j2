@@ -38,6 +38,14 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# The whole project is installed below, and a project may derive its version from
+# version control (hatch-vcs, setuptools-scm, uv-dynamic-versioning, ...): the
+# context, .git included, is copied for it, and git is installed to read it. A
+# project that does not need this can drop the step.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install the project itself, so the operator's own imports resolve and the
 # dependencies it pins are the ones that end up in the image.
 COPY . /app/

@@ -54,8 +54,11 @@ module that ships with `based-operators` itself.
 !!! note "The image installs your project"
     The generated Dockerfile runs `pip install .` on the build context, so the
     operator's own dependencies — including `based-operators` and `kopf` — come
-    from the project itself. A project that is not pip-installable needs the
-    Dockerfile's install step adjusted.
+    from the project itself. It also installs `git` and copies the whole context,
+    `.git` included, so a project that derives its version from version control
+    (`hatch-vcs`, `setuptools-scm`, `uv-dynamic-versioning`, …) installs without
+    extra work. A project that is not pip-installable needs the Dockerfile's
+    install step adjusted.
 
 ## Build, push and install
 
