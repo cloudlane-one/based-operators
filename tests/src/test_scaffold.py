@@ -249,6 +249,15 @@ def test_dockerfile_runs_kopf_with_health_checks(project: Path) -> None:
     assert "HEALTHCHECK" in dockerfile
 
 
+def test_dockerfile_runs_as_the_user_the_chart_expects(project: Path) -> None:
+    """The image carries the unprivileged account the chart runs the container as."""
+    scaffold(project)
+    dockerfile = read(project / "deploy", "Dockerfile")
+
+    assert "--uid 65532" in dockerfile
+    assert "USER 65532" in dockerfile
+
+
 def test_dockerfile_documents_the_resources(project: Path) -> None:
     """The resources the operator reconciles are named in the image's header."""
     scaffold(project)

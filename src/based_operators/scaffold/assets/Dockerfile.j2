@@ -51,6 +51,13 @@ RUN apt-get update \
 COPY . /app/
 RUN pip install --no-cache-dir .
 
+# The chart's securityContext runs the container as this uid, and kopf resolves
+# the account when it starts: a uid with no passwd entry aborts it, so the user
+# has to exist in the image.
+RUN useradd --uid 65532 --user-group --create-home --shell /usr/sbin/nologin nonroot
+
+USER 65532
+
 EXPOSE {{ health_port }}
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
