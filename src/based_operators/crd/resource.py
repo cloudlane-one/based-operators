@@ -264,10 +264,12 @@ def _check_wire_names(model: type[BaseModel], visited: set[type[BaseModel]]) -> 
     visited.add(model)
 
     decorators = getattr(model, "__pydantic_decorators__", None)
-    if decorators is not None and (decorators.field_serializers or decorators.model_serializers):
+    if decorators is not None and (
+        decorators.field_serializers or decorators.model_serializers or decorators.computed_fields
+    ):
         raise ResourceDefinitionError(
-            f"{model.__name__} defines a custom field or model serializer; "
-            "shape-changing serializers are not supported"
+            f"{model.__name__} defines a custom serializer or computed field; "
+            "shape-changing serialization is not supported"
         )
 
     for name, field in model.model_fields.items():

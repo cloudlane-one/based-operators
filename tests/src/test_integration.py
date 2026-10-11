@@ -86,25 +86,34 @@ def _server_version() -> str:
 def namespace() -> Any:
     """Create a throwaway namespace and register the generated CRD."""
     name = f"crd-integration-{uuid.uuid4().hex[:8]}"
-    _kubectl("create", "namespace", name)
-    _kubectl("apply", "-f", "-", stdin=json.dumps(crd_manifest(Integration)))
+    try:
+        _kubectl("create", "namespace", name)
+        _kubectl("apply", "-f", "-", stdin=json.dumps(crd_manifest(Integration)))
 
-    for _ in range(30):
-        result = _kubectl(
-            "get", "crd", "integrations.integration.example.com", "-o", "json", check=False
+        for _ in range(30):
+            result = _kubectl(
+                "get", "crd", "integrations.integration.example.com", "-o", "json", check=False
+            )
+            if result.returncode == 0:
+                conditions = json.loads(result.stdout).get("status", {}).get("conditions", [])
+                if any(c["type"] == "Established" and c["status"] == "True" for c in conditions):
+                    break
+            time.sleep(2)
+        else:
+            raise AssertionError("CRD was not established in time")
+
+        yield name
+    finally:
+        # Runs even if setup fails, so a failed run cannot leak the cluster-scoped
+        # CRD or the namespace and contaminate later runs.
+        _kubectl(
+            "delete",
+            "crd",
+            "integrations.integration.example.com",
+            "--ignore-not-found",
+            check=False,
         )
-        if result.returncode == 0:
-            conditions = json.loads(result.stdout).get("status", {}).get("conditions", [])
-            if any(c["type"] == "Established" and c["status"] == "True" for c in conditions):
-                break
-        time.sleep(2)
-    else:
-        raise AssertionError("CRD was not established in time")
-
-    yield name
-
-    _kubectl("delete", "crd", "integrations.integration.example.com", "--ignore-not-found")
-    _kubectl("delete", "namespace", name, "--ignore-not-found")
+        _kubectl("delete", "namespace", name, "--ignore-not-found", check=False)
 
 
 def test_server_version_is_pinned() -> None:

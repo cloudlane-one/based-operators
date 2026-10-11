@@ -10,6 +10,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    computed_field,
     field_serializer,
     field_validator,
 )
@@ -324,3 +325,27 @@ def test_custom_serializer_is_rejected() -> None:
 
     with pytest.raises(ResourceDefinitionError):
         crd_manifest(Serialized)
+
+
+def test_computed_field_is_rejected() -> None:
+    """Computed fields change the serialized shape and are rejected."""
+
+    class ComputedSpec(BaseModel):
+        value: int
+
+        @computed_field
+        @property
+        def doubled(self) -> int:
+            return self.value * 2
+
+    class Computed(CustomResource[ComputedSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="Computed",
+            plural="computeds",
+            scope=Scope.NAMESPACED,
+        )
+
+    with pytest.raises(ResourceDefinitionError):
+        crd_manifest(Computed)

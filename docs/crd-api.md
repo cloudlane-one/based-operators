@@ -7,6 +7,11 @@ represented faithfully.
 
 ## Quickstart
 
+!!! note "Optional dependency"
+    The examples below render YAML with `crd_yaml()`, which needs the `yaml` extra
+    (`pip install "based-operators[yaml]"`). `crd_manifest()` returns the same
+    manifest as a dictionary and has no extra dependencies.
+
 Define a `spec` model and an optional `status` model, then subclass
 [`CustomResource`][based_operators.crd.CustomResource] with a
 [`ResourceConfig`][based_operators.crd.ResourceConfig]:

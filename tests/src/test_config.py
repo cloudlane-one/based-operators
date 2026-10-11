@@ -63,6 +63,7 @@ def test_unknown_key_is_rejected() -> None:
         ("group", "-example.com"),
         ("version", "V1"),
         ("version", "v1/x"),
+        ("version", "1"),
         ("kind", "widget"),
         ("kind", "1Widget"),
         ("kind", "Widget-Thing"),
