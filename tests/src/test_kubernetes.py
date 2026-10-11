@@ -465,12 +465,31 @@ def test_forward_reference_resolves() -> None:
 
 
 def test_reference_siblings_are_merged() -> None:
-    """A ``$ref`` with sibling keywords is inlined and the siblings kept."""
+    """A ``$ref`` with annotative siblings is inlined and the siblings kept."""
     described = kubernetes_schema(Coverage)["properties"]["spec"]["properties"]["described_ref"]
 
     assert described["type"] == "object"
     assert described["description"] == "a described nested"
     assert described["properties"]["x"]["type"] == "integer"
+
+
+def test_conflicting_ref_sibling_is_rejected() -> None:
+    """A ``$ref`` sibling colliding with a validation keyword is rejected."""
+
+    class RefConflictSpec(BaseModel):
+        nested: Annotated[Nested, Field(json_schema_extra={"required": []})]
+
+    class RefConflict(CustomResource[RefConflictSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="RefConflict",
+            plural="refconflicts",
+            scope=Scope.NAMESPACED,
+        )
+
+    with pytest.raises(SchemaGenerationError, match="conflict"):
+        kubernetes_schema(RefConflict)
 
 
 def test_examples_become_example() -> None:

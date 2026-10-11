@@ -97,6 +97,16 @@ def test_duplicate_short_names_rejected() -> None:
         _config(short_names=("wd", "wd"))
 
 
+@pytest.mark.parametrize(
+    "group",
+    ["k8s.io", "kubernetes.io", "example.k8s.io", "apps.kubernetes.io"],
+)
+def test_protected_group_is_rejected(group: str) -> None:
+    """Protected Kubernetes community groups are rejected."""
+    with pytest.raises(ValidationError):
+        _config(group=group)
+
+
 def test_missing_required_field() -> None:
     """Scope is required."""
     with pytest.raises(ValidationError):

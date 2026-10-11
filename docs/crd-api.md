@@ -134,6 +134,7 @@ model, field and JSON-schema path — nothing is silently weakened:
 | Unions other than `X \| None` and `int \| str` | No faithful structural representation. |
 | `set` / `uniqueItems: true` | Kubernetes rejects `uniqueItems: true`. |
 | Mixed-type `Literal[1, "a"]` | No single `type`. |
-| Shape-changing serializers, `AliasChoices`, mismatched aliases | Wire names cannot be reconciled. |
+| Protected groups (`*.k8s.io`, `*.kubernetes.io`) | Require the `api-approved.kubernetes.io` annotation, which is not emitted. |
+| Shape-changing serializers, computed fields, `AliasChoices`, mismatched aliases | Wire names cannot be reconciled. |
 Python validators remain Python validators: the generated OpenAPI schema does not
 reproduce arbitrary procedural validation, and no CEL is generated.
