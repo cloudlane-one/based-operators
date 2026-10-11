@@ -2,7 +2,7 @@
 
 `based_operators.crd` turns Pydantic models into Kubernetes CustomResourceDefinition
 manifests. This page is for people changing the adapter itself — if you only want to
-*use* it, read [Custom resources and CRD generation](./crd-api.md) instead.
+*use* it, read [How to define custom resources](./how-to-define-custom-resources.md) instead.
 
 ## One rule to rule them all
 

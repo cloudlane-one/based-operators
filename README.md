@@ -3,7 +3,9 @@
 A model-first Python operator toolkit. The first module, `based_operators.crd`,
 provides typed [Pydantic](https://docs.pydantic.dev/) custom-resource models and
 generates `apiextensions.k8s.io/v1` CustomResourceDefinition manifests from
-Pydantic's own JSON Schema output.
+Pydantic's own JSON Schema output. The second, `based_operators.handlers`, wraps
+[kopf](https://kopf.readthedocs.io/)'s resource-level decorators so that handlers
+work with those typed models instead of raw dictionaries.
 
 The adapter is deliberately thin: it makes only the dialect changes Kubernetes
 requires and refuses anything it cannot represent faithfully, so no validation
@@ -39,13 +41,36 @@ print(crd_yaml(Widget))
 "based-operators[yaml]"`. Without it, use `crd_manifest(Widget)`, which returns the
 same manifest as a plain dictionary.
 
-See the [custom resources and CRD guide](./docs/crd-api.md) for the full API, the
-supported-feature table and the limitations.
+See [How to define custom resources](./docs/how-to-define-custom-resources.md) to
+get started, and the [custom resources reference](./docs/ref-crd.md) for the full
+API, the supported-construct table and the limitations.
+
+## Reconciliation
+
+Handlers are attached to a resource through its `on` namespace, which mirrors
+kopf's decorators and derives the resource selector from the resource config:
+
+```python
+import based_operators as bk
+
+from .models import Greeting
+
+
+@Greeting.on.create
+@Greeting.on.resume
+async def reconcile(resource: Greeting, patch: bk.Patch, logger, **kwargs) -> None:
+    desired = resource.spec  # a typed GreetingSpec, never a raw dict
+```
+
+See [How to write handlers](./docs/how-to-write-handlers.md) for worked examples,
+and the [handlers reference](./docs/ref-handlers.md) for the decorator list and the
+arguments a handler receives.
 
 ## Public API
 
 - `CustomResource`, `ResourceConfig`, `Scope`, `ObjectMeta`
 - `source_json_schema`, `kubernetes_schema`, `crd_manifest`, `crd_yaml`, `to_yaml`
+- `ResourceHandlers`, `handler_namespace`, `Patch`, `Diff`, `RawEvent`, `HandlerError`
 
 ## Development
 
