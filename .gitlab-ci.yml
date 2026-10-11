@@ -34,6 +34,11 @@ variables:
 
 checks:
   stage: check
+  before_script:
+    # The test suite lints the scaffolded Helm chart (tests/test_helm.py), so
+    # helm has to be installed before pytest runs.
+    - apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+    - curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
   script:
     - uv sync --group ci
     - uv run ruff check .
@@ -43,6 +48,27 @@ checks:
     - uv run vtr assert-license-compliance
     - uv run vtr assert-no-vulnerabilities
     - uv run vtr assert-no-deptry-issues
+
+image-smoke:
+  stage: check
+  # Builds the image from the generated Dockerfile and runs a couple of smoke
+  # checks inside it (tests/test_image.py), against a Docker daemon provided by
+  # the dind service.
+  image: docker:27-cli
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "/certs/client"
+  before_script:
+    - apk add --no-cache bash curl git
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+  script:
+    - uv sync --group ci
+    - BASED_OPERATORS_IMAGE_SMOKE=1 uv run pytest tests/test_image.py -v
 
 release:
   stage: release

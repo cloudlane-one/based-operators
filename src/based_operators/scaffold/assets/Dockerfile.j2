@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+
+# -----------------------------------------------------------------------------
+# The {{ name }} operator image, scaffolded by 'based-operators scaffold'.
+#
+# Build it from the project root, so that the build context is the project
+# itself: the image installs the project and with it everything the operator
+# declares, including based-operators and kopf.
+#
+#     docker build -f {{ dockerfile_ref }} -t {{ image }} .
+#
+# The container runs kopf with the health checks enabled:
+#
+#     {{ kopf_command | join(" ") }}
+#
+# which reconciles these custom resources:
+{% for resource in resources %}
+#     * {{ resource.api_version }} {{ resource.kind }} ({{ resource.scope }}, installed as {{ resource.crd_name }})
+{% endfor %}
+{% if webhook %}
+# Admission webhooks are served by {{ webhook_module }}, which kopf imports with
+# -m on startup; the chart feeds it the mounted certificate through the
+# environment.
+{% endif %}
+# kopf serves its liveness endpoint on port {{ health_port }}; the liveness
+# probe of the Helm chart calls the very same URL.
+# -----------------------------------------------------------------------------
+
+FROM python:{{ python_version }}-slim
+
+# Unbuffered output keeps the operator's logs in the order kopf emits them, and
+# bytecode is not written because the container filesystem is not the source of
+# truth for anything.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Install the project itself, so the operator's own imports resolve and the
+# dependencies it pins are the ones that end up in the image.
+COPY . /app/
+RUN pip install --no-cache-dir .
+
+EXPOSE {{ health_port }}
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('{{ liveness_url }}', timeout=2)"]
+
+CMD {{ kopf_command | tojson }}

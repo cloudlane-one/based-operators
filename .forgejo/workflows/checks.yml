@@ -23,6 +23,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --group ci
 
+      # The test suite lints the scaffolded Helm chart (tests/test_helm.py).
+      - name: Setup Helm
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
       - name: Run Ruff
         run: uv run ruff check .
 
@@ -43,3 +48,24 @@ jobs:
 
       - name: Check unused undeclared deps
         run: uv run vtr assert-no-deptry-issues
+
+  image-smoke:
+    name: Image smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: https://github.com/actions/checkout@v7.0.1
+
+      - name: Setup uv
+        uses: https://github.com/astral-sh/setup-uv@v10.0.1
+
+      - name: Install dependencies
+        run: uv sync --group ci
+
+      # Builds the image from the generated Dockerfile and runs a couple of smoke
+      # checks inside it (tests/test_image.py).
+      - name: Build and smoke-test the generated image
+        env:
+          BASED_OPERATORS_IMAGE_SMOKE: "1"
+        run: uv run pytest tests/test_image.py -v

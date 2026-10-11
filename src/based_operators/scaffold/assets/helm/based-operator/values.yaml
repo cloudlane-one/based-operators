@@ -1,0 +1,61 @@
+# Defaults of the scaffolded operator chart.
+#
+# `based-operators scaffold` copies this chart verbatim and rewrites only the
+# image it deploys — and, with --webhook, the webhook toggle. Everything else
+# keeps the value below. See README.md for what each value does.
+
+replicaCount: 1
+
+image:
+  repository: based-operator
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Grants the operator access to the custom resources of this chart (the rules
+# are derived from the CRDs under crds/), to the namespaces kopf tracks and to
+# the events it posts.
+rbac:
+  create: true
+
+podLabels: {}
+podAnnotations: {}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  runAsNonRoot: true
+  runAsUser: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+podSecurityContext: {}
+
+# The admission webhook served by the operator; scaffold it with --webhook.
+webhook:
+  enabled: false
+  # Kept in step with `based_operators.webhook.DEFAULT_PORT`, which applies only
+  # outside a cluster: this value is what the deployment passes to the module.
+  port: 8443
+  failurePolicy: Fail
+  certManager:
+    createIssuer: true
+    issuerRef:
+      name: ""
+      kind: Issuer
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

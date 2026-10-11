@@ -70,7 +70,7 @@ def to_yaml(data: Any) -> str:
         The YAML document as a string.
 
     Raises:
-        CrdError: If the optional ``pyyaml`` dependency is not installed.
+        CrdError: If PyYAML is not installed.
     """
     yaml = _import_yaml()
     return yaml.safe_dump(data, sort_keys=False, default_flow_style=False)
@@ -88,7 +88,7 @@ def crd_yaml(resource_type: type[CustomResource[Any, Any]]) -> str:
     Raises:
         ResourceDefinitionError: If the class is not a valid resource definition.
         SchemaGenerationError: If the resource schema cannot be represented.
-        CrdError: If the optional ``pyyaml`` dependency is not installed.
+        CrdError: If PyYAML is not installed.
     """
     return to_yaml(crd_manifest(resource_type))
 
@@ -105,8 +105,5 @@ def _import_yaml() -> Any:
     try:
         import yaml
     except ImportError as error:  # pragma: no cover - exercised via monkeypatch
-        raise CrdError(
-            "YAML rendering requires the optional 'pyyaml' dependency; "
-            "install 'based-operators[yaml]'"
-        ) from error
+        raise CrdError("YAML rendering requires the 'pyyaml' dependency") from error
     return yaml

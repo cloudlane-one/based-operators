@@ -51,11 +51,12 @@ for `[Spec, None]` and `NoneType` for `[Spec, NoneType]` — check both.
 uv run pytest tests/src/test_kubernetes.py tests/src/test_resource.py
 ```
 
-For a real API server — it registers representative CRDs and checks establishment,
-defaulting, pruning, schema rejection and the status subresource:
+For a real API server — it registers representative CRDs, builds the operator
+image and deploys it, checking establishment, defaulting, pruning, schema
+rejection, the status subresource and reconciliation of a live object:
 
 ```shell
-BASED_OPERATORS_K8S_INTEGRATION=1 uv run pytest tests/src/test_integration.py
+BASED_OPERATORS_K8S_INTEGRATION=1 uv run pytest tests/test_integration.py
 ```
 
 The integration suite pins Kubernetes 1.31.

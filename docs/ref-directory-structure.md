@@ -3,7 +3,9 @@
 Names of directories and config files in this repository are mostly based on common conventions and requirements by specific development tools, with few custom ideas added on top:
 
 - `.venv`: Python virtual environment (*not checked out in Git*)
-- `app`: Executable scripts for GUIs, CLIs and APIs (based on library code in `src`)
+- `app`: Executable applications and notebook examples (based on library code in `src`)
+  - `app/based_ops_cli/`: The `based-operators` CLI application; it ships as its own top-level package (`based_ops_cli`) with a `__main__.py` entry point
+  - `app/operator_example.py`: A complete operator entry point, used by the guides as the input of the scaffolder
 - `docs`: Source files (mostly Markdown) for project documentation (how-tos, API-reference, explanations, etc.)
 - `src`: Source code for the core library modules
 - `test`: Code for automated testing of library modules (via [pytest](https://pypi.org/project/pytest/))

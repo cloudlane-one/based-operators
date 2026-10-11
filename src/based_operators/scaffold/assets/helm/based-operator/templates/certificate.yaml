@@ -1,0 +1,41 @@
+{{- if .Values.webhook.enabled }}
+{{- if .Values.webhook.certManager.createIssuer }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "based-operator.fullname" . }}-selfsigned
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "based-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "based-operator.webhookSecretName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "based-operator.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "based-operator.webhookSecretName" . }}
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    {{- if .Values.webhook.certManager.createIssuer }}
+    name: {{ include "based-operator.fullname" . }}-selfsigned
+    kind: Issuer
+    {{- else }}
+    name: {{ required "webhook.certManager.issuerRef.name is required when createIssuer is false" .Values.webhook.certManager.issuerRef.name }}
+    kind: {{ .Values.webhook.certManager.issuerRef.kind | default "Issuer" }}
+    {{- end }}
+  commonName: {{ printf "%s.%s.svc" (include "based-operator.fullname" .) .Release.Namespace }}
+  dnsNames:
+    - {{ printf "%s.%s.svc" (include "based-operator.fullname" .) .Release.Namespace }}
+    - {{ printf "%s.%s.svc.cluster.local" (include "based-operator.fullname" .) .Release.Namespace }}
+  usages: [digital signature, key encipherment, server auth]
+{{- end }}

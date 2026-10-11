@@ -8,6 +8,11 @@ site_dir: ../dist/docs
 use_directory_urls: false
 dev_addr: 127.0.0.1:9000
 
+# The `mkdocs-typer2` directive imports the CLI module, which lives in `app/` of
+# the checkout (and ships as the top-level `based_ops_cli` package).
+watch:
+  - ../app
+
 nav:
   - Home: index.md
   - Development:
@@ -19,10 +24,13 @@ nav:
   - Guides:
       - How to define custom resources: how-to-define-custom-resources.md
       - How to write handlers: how-to-write-handlers.md
+      - How to scaffold a deployment: how-to-scaffold-a-deployment.md
   - Reference:
       - Python API: ref-python-api.md
       - Custom resources and CRDs: ref-crd.md
       - Handlers and reconciliation: ref-handlers.md
+      - The webhook module: ref-webhook.md
+      - Command-line interface: ref-cli.md
       - ref-directory-structure.md
       - ref-code-conventions-tooling.md
 
@@ -33,8 +41,10 @@ validation:
 
 theme:
   name: material
-  logo: img/logo-kit-white.png
-  favicon: img/favicon.ico
+  # The header keeps the primary colour in every palette, so it carries the mark
+  # on its own; the tile with the gradient is used inside the pages instead.
+  logo: img/logo-header.svg
+  favicon: img/favicon.svg
   features:
     - announce.dismiss
     - content.action.edit
@@ -115,6 +125,9 @@ plugins:
   - search
   - markdown-exec
   - section-index
+  - mkdocs-typer2:
+      pretty: true
+      engine: native
   - macros:
       module_name: _macros
 

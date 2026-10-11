@@ -50,10 +50,10 @@ class Widget(CustomResource[WidgetSpec, WidgetStatus]):
 print(crd_yaml(Widget))
 ```
 
-!!! note "Optional dependency"
-    `crd_yaml()` needs the `yaml` extra (`pip install "based-operators[yaml]"`).
-    `crd_manifest()` returns the same manifest as a dictionary and has no extra
-    dependencies.
+!!! note "YAML rendering"
+    `crd_yaml()` renders the same manifest as YAML through PyYAML, which is a
+    dependency of `based-operators`; `crd_manifest()` returns it as a dictionary
+    and needs nothing beyond the core library.
 
 The generated CRD is single-version, served and stored, and carries a `status`
 subresource whenever the resource has a status model. Nested models, enums,
