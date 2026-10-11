@@ -1,8 +1,8 @@
-site_name: Based PyProject
+site_name: Based Operators
 docs_dir: .
 site_url: !ENV SITE_URL
-repo_url: "https://github.com/cloudlane-one/based-pyproject"
-repo_name: "cloudlane-one/based-pyproject"
+repo_url: "https://github.com/cloudlane-one/based-operators"
+repo_name: "cloudlane-one/based-operators"
 edit_uri: "-/edit/main/docs/"
 site_dir: ../dist/docs
 use_directory_urls: false
@@ -15,8 +15,10 @@ nav:
       - how-to-setup-locally.md
       - how-to-add-dependencies.md
       - how-to-check-quality.md
+      - how-to-extend-the-crd-module.md
   - Reference:
       - Python API: ref-python-api.md
+      - Custom resources and CRDs: crd-api.md
       - ref-directory-structure.md
       - ref-code-conventions-tooling.md
 

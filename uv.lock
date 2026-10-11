@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13, <4"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -155,10 +155,15 @@ wheels = [
 ]
 
 [[package]]
-name = "based-pyproject"
+name = "based-operators"
 source = { editable = "." }
 dependencies = [
-    { name = "structlog" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+yaml = [
+    { name = "pyyaml" },
 ]
 
 [package.dev-dependencies]
@@ -193,6 +198,7 @@ ci = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "python-semantic-release" },
+    { name = "pyyaml" },
     { name = "rich" },
     { name = "ruff" },
     { name = "vscode-task-runner" },
@@ -219,6 +225,7 @@ dev = [
     { name = "properdocs" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
     { name = "rich" },
     { name = "ruff" },
     { name = "vscode-task-runner" },
@@ -246,10 +253,15 @@ lint = [
 test = [
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "structlog", specifier = ">=26.1.0,<27.0.0" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.11.0,<3.0.0" },
+    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6.0.1,<7.0.0" },
+]
+provides-extras = ["yaml"]
 
 [package.metadata.requires-dev]
 app = [
@@ -283,6 +295,7 @@ ci = [
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
     { name = "python-semantic-release", specifier = ">=10.6.2,<11.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
     { name = "rich", specifier = ">=15.0.0,<16.0.0" },
     { name = "ruff", specifier = ">=0.16.6,<0.17.0" },
     { name = "vscode-task-runner", specifier = ">=3.0.1,<4.0.0" },
@@ -309,6 +322,7 @@ dev = [
     { name = "properdocs", specifier = ">=1.6.7,<2.0.0" },
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
     { name = "rich", specifier = ">=15.0.0,<16.0.0" },
     { name = "ruff", specifier = ">=0.16.6,<0.17.0" },
     { name = "vscode-task-runner", specifier = ">=3.0.1,<4.0.0" },
@@ -336,6 +350,7 @@ lint = [
 test = [
     { name = "pytest", specifier = ">=9.0.3,<10.0.0" },
     { name = "pytest-cov", specifier = ">=7.1.0,<8.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.1,<7.0.0" },
 ]
 
 [[package]]
@@ -3044,15 +3059,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707, upload-time = "2023-09-30T13:58:05.479Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
-]
-
-[[package]]
-name = "structlog"
-version = "26.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5e/89/b4a0bcfdf4f71a3dea31379f095929613d7e4528a0996bca6aa964cd0dca/structlog-26.1.0.tar.gz", hash = "sha256:f63a716cbd1b1291cf7661de7794b455acfa4c43c5bcf1630e6ad5ddc1adb3b7", size = 1459881, upload-time = "2026-06-06T07:33:39.348Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/18/489c97b834dfff9cf2fc2507cede4bcd4b11e67f84bc462acd1992496f86/structlog-26.1.0-py3-none-any.whl", hash = "sha256:e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e", size = 73764, upload-time = "2026-06-06T07:33:38.046Z" },
 ]
 
 [[package]]
