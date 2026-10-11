@@ -13,7 +13,6 @@ _DNS_1123_SUBDOMAIN = re.compile(
     r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
 )
 _DNS_1035_LABEL = re.compile(r"^[a-z]([-a-z0-9]*[a-z0-9])?$")
-_DNS_1123_LABEL = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 _CAMEL_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
 _MAX_GROUP_LENGTH = 253
@@ -73,10 +72,10 @@ class ResourceConfig(BaseModel):
     @field_validator("version")
     @classmethod
     def _check_version(cls, value: str) -> str:
-        if len(value) > _MAX_NAME_LENGTH or not _DNS_1123_LABEL.match(value):
+        if len(value) > _MAX_NAME_LENGTH or not _DNS_1035_LABEL.match(value):
             raise ValueError(
-                f"version {value!r} must be a DNS-1123 label "
-                f"(lowercase alphanumeric and '-', max {_MAX_NAME_LENGTH} chars)"
+                f"version {value!r} must be a DNS-1035 label "
+                f"(start with a lowercase letter, max {_MAX_NAME_LENGTH} chars)"
             )
         return value
 

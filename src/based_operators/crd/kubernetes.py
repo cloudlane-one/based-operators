@@ -221,11 +221,9 @@ def _adapt_union(
         return result
 
     if _is_int_or_string(branches):
-        result: dict[str, Any] = {
-            field: value for field, value in siblings.items() if field != "default"
-        }
-        if siblings.get("default") is not None:
-            result["default"] = siblings["default"]
+        result: dict[str, Any] = {}
+        for field, value in siblings.items():
+            _adapt_scalar(result, field, value, path)
         result["x-kubernetes-int-or-string"] = True
         result["anyOf"] = [{"type": "integer"}, {"type": "string"}]
         return result

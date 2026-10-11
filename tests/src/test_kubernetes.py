@@ -341,6 +341,46 @@ def test_int_or_string() -> None:
     assert value["default"] == 5
 
 
+def test_int_or_string_siblings_are_adapted() -> None:
+    """Siblings of an ``int | str`` union are adapted, not copied verbatim."""
+
+    class IosSiblingSpec(BaseModel):
+        value: Annotated[int | str, Field(examples=[1])] = 1
+
+    class IosSibling(CustomResource[IosSiblingSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="IosSibling",
+            plural="iossiblings",
+            scope=Scope.NAMESPACED,
+        )
+
+    field = kubernetes_schema(IosSibling)["properties"]["spec"]["properties"]["value"]
+
+    assert field["example"] == 1
+    assert "examples" not in field
+
+
+def test_int_or_string_rejects_unsupported_siblings() -> None:
+    """An unsupported keyword sibling of an ``int | str`` union is rejected."""
+
+    class IosBadSpec(BaseModel):
+        value: Annotated[int | str, Field(json_schema_extra={"not": {"type": "integer"}})] = 1
+
+    class IosBad(CustomResource[IosBadSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="IosBad",
+            plural="iosbads",
+            scope=Scope.NAMESPACED,
+        )
+
+    with pytest.raises(SchemaGenerationError, match="unsupported JSON schema keyword"):
+        kubernetes_schema(IosBad)
+
+
 def test_recursive_model_is_rejected() -> None:
     """A recursive model graph cannot be represented and is rejected."""
 

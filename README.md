@@ -35,6 +35,10 @@ class Widget(CustomResource[WidgetSpec, None]):  # None => status-less resource
 print(crd_yaml(Widget))
 ```
 
+`crd_yaml()` renders YAML, which needs the optional extra — `pip install
+"based-operators[yaml]"`. Without it, use `crd_manifest(Widget)`, which returns the
+same manifest as a plain dictionary.
+
 See the [custom resources and CRD guide](./docs/crd-api.md) for the full API, the
 supported-feature table and the limitations.
 
