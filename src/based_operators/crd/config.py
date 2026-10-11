@@ -19,6 +19,23 @@ _MAX_GROUP_LENGTH = 253
 _MAX_NAME_LENGTH = 63
 
 
+def _is_protected_group(group: str) -> bool:
+    """Return whether a group is a protected Kubernetes community group.
+
+    Args:
+        group: The API group to test.
+
+    Returns:
+        ``True`` for ``k8s.io``/``kubernetes.io`` and their subdomains, which the
+        API server only accepts with the ``api-approved.kubernetes.io`` annotation.
+    """
+    return (
+        group in {"k8s.io", "kubernetes.io"}
+        or group.endswith(".k8s.io")
+        or group.endswith(".kubernetes.io")
+    )
+
+
 class Scope(StrEnum):
     """The scope of a custom resource, mirroring ``spec.scope`` of a CRD."""
 
@@ -66,6 +83,11 @@ class ResourceConfig(BaseModel):
             raise ValueError(
                 f"group {value!r} must be a DNS-1123 subdomain "
                 f"(lowercase alphanumeric, '-', '.', max {_MAX_GROUP_LENGTH} chars)"
+            )
+        if _is_protected_group(value):
+            raise ValueError(
+                f"group {value!r} is a protected Kubernetes community group; it requires the "
+                "'api-approved.kubernetes.io' annotation, which this library does not emit"
             )
         return value
 

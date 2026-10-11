@@ -44,6 +44,11 @@ _DROPPED_KEYWORDS = frozenset(
     {"$schema", "$id", "$comment", "$defs", "deprecated", "discriminator"}
 )
 
+# ``$ref`` siblings are conjunctive in JSON Schema. These keywords carry no
+# validation semantics, so a sibling may safely override the referenced schema;
+# any other colliding keyword would silently weaken validation and is rejected.
+_REF_ANNOTATION_KEYWORDS = frozenset({"description", "title", "example", "examples", "$comment"})
+
 _ENVELOPE_FIELDS = ("apiVersion", "kind", "metadata")
 
 
@@ -154,6 +159,17 @@ def _adapt_reference(
     if target is None:
         raise SchemaGenerationError(_error(path, f"unresolved reference {reference!r}"))
     siblings = {key: value for key, value in node.items() if key != "$ref"}
+    conflicts = sorted(
+        key for key in siblings if key in target and key not in _REF_ANNOTATION_KEYWORDS
+    )
+    if conflicts:
+        raise SchemaGenerationError(
+            _error(
+                path,
+                f"$ref siblings {conflicts} conflict with the referenced schema {name!r}; "
+                "conjunctive keywords cannot be merged without weakening validation",
+            )
+        )
     return _adapt({**target, **siblings}, definitions, path, (*stack, name))
 
 
