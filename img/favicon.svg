@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Based Operators">
+  <title>Based Operators</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00897b"/>
+      <stop offset="1" stop-color="#7c4dff"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="17.28" fill="url(#tile)"/>
+  <g transform="translate(32 32) scale(1.16) translate(-32 -32)">
+    <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round">
+      <path d="M 44.98 38.9 A 14.7 14.7 0 1 1 44.98 25.1"/>
+    </g>
+    <path d="M 48.5 31.72 L 40.56 27.45 L 49.39 22.75 Z" fill="#fff"/>
+    <rect x="25.6" y="25.6" width="12.8" height="12.8" rx="3.58" fill="#fff"/>
+  </g>
+</svg>
