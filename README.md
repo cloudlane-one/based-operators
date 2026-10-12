@@ -3,6 +3,9 @@
 **Build a Kubernetes operator out of Pydantic models and Python, and ship it as
 an image and a Helm chart.**
 
+> **Status:** first alpha. The project is pre-1.0, so the public API may still
+> change between releases.
+
 Based Operators is a model-first toolkit for custom operators. You describe a
 custom resource with [Pydantic](https://docs.pydantic.dev/) v2 models, you write
 its reconciliation in ordinary Python with [kopf](https://kopf.readthedocs.io/),
