@@ -101,6 +101,16 @@ The package can also be run without installing it, straight from the index:
 uvx based-operators scaffold operator.py -o deploy
 ```
 
+## Documentation
+
+The documentation site is published to GitHub Pages at
+[cloudlane-one.github.io/based-operators](https://cloudlane-one.github.io/based-operators/).
+
+→ [Guides](https://cloudlane-one.github.io/based-operators/how-to-define-custom-resources.html) ·
+[Python API](https://cloudlane-one.github.io/based-operators/ref-python-api.html) ·
+[Custom resources and CRDs](https://cloudlane-one.github.io/based-operators/ref-crd.html) ·
+[Handlers](https://cloudlane-one.github.io/based-operators/ref-handlers.html)
+
 ## Development
 
 This project follows the conventions of the repository template it was
