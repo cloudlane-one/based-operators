@@ -3,9 +3,10 @@
 The scaffold is assembled from three sources. The resource classes provide the CRD
 documents, which are installed with the chart. The Jinja templates under
 :mod:`based_operators.scaffold.assets` provide the generated text files. And the
-static Helm chart under ``assets/helm`` is copied verbatim — Helm already brings
-its own templating, so the chart is not rendered here; the scaffold only fills in
-the image it deploys, which is the one thing the chart cannot know.
+static Helm chart under ``assets/helm`` is copied verbatim, apart from the Unix
+line endings its text files are written with — Helm already brings its own
+templating, so the chart is not rendered here; the scaffold only fills in the
+image it deploys, which is the one thing the chart cannot know.
 
 The layout written into ``<output>`` is::
 
@@ -396,6 +397,8 @@ def _guard_output(spec: ScaffoldSpec) -> None:
 def _copy_chart(spec: ScaffoldSpec) -> None:
     """Copy the static chart, replacing any chart from an earlier scaffold.
 
+    Text assets are copied with Unix line endings; see :func:`_copy_chart_asset`.
+
     Args:
         spec: The resolved inputs of the scaffold.
 
@@ -407,7 +410,48 @@ def _copy_chart(spec: ScaffoldSpec) -> None:
         raise ScaffoldError(f"the shipped Helm chart is missing from {source}")
     if spec.chart_dir.exists():
         shutil.rmtree(spec.chart_dir)
-    shutil.copytree(source, spec.chart_dir)
+    shutil.copytree(source, spec.chart_dir, copy_function=_copy_chart_asset)
+
+
+def _copy_chart_asset(source: str, destination: str) -> str:
+    """Copy one chart asset, giving a text asset Unix line endings.
+
+    The generated chart is consumed by Helm and by the Linux container the image
+    runs in, so a carriage return in it is at best noise and at worst part of a
+    command. The shipped assets are committed with Unix line endings, but a
+    checkout that materializes them with CRLF — ``core.autocrlf`` on Windows —
+    would otherwise put CRLF into every generated chart file, since a verbatim
+    copy has nothing to normalize it. Binary assets are copied byte for byte.
+
+    Args:
+        source: The path of the asset to copy.
+        destination: The path to copy it to.
+
+    Returns:
+        The destination path.
+    """
+    text = _decode_text(Path(source).read_bytes())
+    if text is None:
+        return shutil.copy2(source, destination)
+    Path(destination).write_text(text.replace("\r\n", "\n"), encoding="utf-8", newline="\n")
+    shutil.copystat(source, destination)
+    return destination
+
+
+def _decode_text(data: bytes) -> str | None:
+    """Decode an asset as UTF-8 text, or report that it is not text.
+
+    Args:
+        data: The raw bytes of an asset.
+
+    Returns:
+        The decoded text, or ``None`` when the bytes are not UTF-8 text.
+    """
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return None if "\x00" in text else text
 
 
 def _write_crds(
