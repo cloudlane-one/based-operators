@@ -47,7 +47,9 @@ Scaffolded the Widget operator into deploy/:
 
 The Dockerfile and the README are rendered from templates, so they can be read
 and edited like any other file; the chart is a plain chart that is copied as it
-is, and the CRDs are generated from your models. No Python is generated: with
+is, with its text files written with Unix line endings so the result is
+Linux-consumable whatever platform you scaffold from, and the CRDs are generated
+from your models. No Python is generated: with
 `--webhook`, the image imports [`based_operators.webhook`](./ref-webhook.md), a
 module that ships with `based-operators` itself.
 

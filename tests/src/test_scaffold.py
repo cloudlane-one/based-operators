@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 import yaml
 
 from based_operators import scaffold as scaffolding
+from based_operators.scaffold import project as project_module
 from based_operators.scaffold import templating
 from based_operators.scaffold.errors import ResourceLoadError, ScaffoldError
 
@@ -206,8 +208,8 @@ def test_scaffold_reports_the_resources_it_found(project: Path) -> None:
 def test_chart_is_copied_verbatim(project: Path) -> None:
     """The chart ships as it is, without the scaffolder rendering it.
 
-    ``values.yaml`` is the one exception: the image the scaffold was asked for is
-    written into the copy.
+    The image the scaffold was asked for is written into ``values.yaml``, and the
+    text files are written with Unix line endings; nothing else is touched.
     """
     scaffold(project)
 
@@ -274,6 +276,52 @@ def test_dockerfile_has_unix_line_endings(project: Path) -> None:
     for path in (project / "deploy").rglob("*"):
         if path.is_file():
             assert b"\r\n" not in path.read_bytes(), path
+
+
+def _crlf_assets(root: Path, *, binary: bool = False) -> Path:
+    """Copy the shipped chart with its text assets rewritten to CRLF.
+
+    Args:
+        root: The directory to lay the assets out in.
+        binary: Whether to add a binary asset next to the text ones.
+
+    Returns:
+        A directory holding the chart, shaped like the shipped ``HELM_DIR``.
+    """
+    assets = root / "crlf-assets"
+    chart = assets / scaffolding.CHART_NAME
+    shutil.copytree(templating.HELM_DIR / scaffolding.CHART_NAME, chart)
+    for path in chart.rglob("*"):
+        if path.is_file():
+            text = path.read_bytes().replace(b"\r\n", b"\n")
+            path.write_bytes(text.replace(b"\n", b"\r\n"))
+    if binary:
+        (chart / "logo.bin").write_bytes(b"\x89PNG\r\n\x1a\n")
+    return assets
+
+
+def test_crlf_assets_scaffold_to_unix_line_endings(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checkout that materialized the chart with CRLF still generates LF files."""
+    monkeypatch.setattr(project_module, "HELM_DIR", _crlf_assets(project))
+    scaffold(project)
+
+    generated = [path for path in (project / "deploy").rglob("*") if path.is_file()]
+
+    assert generated, "the scaffold wrote nothing"
+    for path in generated:
+        assert b"\r\n" not in path.read_bytes(), path
+
+
+def test_binary_assets_are_copied_verbatim(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A binary asset survives the copy byte for byte."""
+    monkeypatch.setattr(project_module, "HELM_DIR", _crlf_assets(project, binary=True))
+    scaffold(project)
+
+    copied = project / "deploy" / "helm" / scaffolding.CHART_NAME / "logo.bin"
+
+    assert copied.read_bytes() == b"\x89PNG\r\n\x1a\n"
 
 
 def test_python_version_is_configurable(project: Path) -> None:
