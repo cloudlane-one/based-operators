@@ -43,6 +43,7 @@ information is lost along the way.
 | `Field(ge=, le=, gt=, lt=, multiple_of=)` | `minimum`/`maximum` + `exclusive*`, `multipleOf` | Exclusive bounds are converted to the OpenAPI 3.0 form. |
 | `Field(min_length=, max_length=, pattern=)` | `minLength`/`maxLength`, `pattern` | — |
 | `Field(alias=)` | Wire name is the alias | Validation and serialization aliases must match. |
+| `Field(validation_alias=AliasChoices(...), serialization_alias=...)` | Wire name is the serialization alias | Accepted when every choice is a string and the **first** choice equals the serialization alias, which is the name Pydantic emits in the schema. |
 | `extra="forbid"` | `additionalProperties: false` dropped | Kubernetes prunes unknown fields instead. |
 | `extra="allow"` | `x-kubernetes-preserve-unknown-fields: true` | `additionalProperties` is mutually exclusive with `properties`. |
 | `default=...` | `default` | `None` defaults are dropped. |
@@ -60,7 +61,7 @@ model, field and JSON-schema path — nothing is silently weakened:
 | `set` / `uniqueItems: true` | Kubernetes rejects `uniqueItems: true`. |
 | Mixed-type `Literal[1, "a"]` | No single `type`. |
 | Protected groups (`*.k8s.io`, `*.kubernetes.io`) | Require the `api-approved.kubernetes.io` annotation, which is not emitted. |
-| Shape-changing serializers, computed fields, `AliasChoices`, mismatched aliases | Wire names cannot be reconciled. |
+| Shape-changing serializers, computed fields, mismatched aliases, `AliasPath` | Wire names cannot be reconciled. |
 
 Python validators remain Python validators: the generated OpenAPI schema does not
 reproduce arbitrary procedural validation, and no CEL is generated.

@@ -6,7 +6,7 @@ from types import NoneType
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, get_args
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic.fields import FieldInfo
 
 from based_operators.crd.config import ResourceConfig, Scope
@@ -288,6 +288,10 @@ def _iter_nested_models(annotation: Any) -> list[type[BaseModel]]:
 def _check_wire_names(model: type[BaseModel], visited: set[type[BaseModel]]) -> None:
     """Reject inconsistent validation/serialization names and shape serializers.
 
+    A field is accepted when its validation alias equals its serialization alias
+    or when its validation alias is an :class:`~pydantic.AliasChoices` whose first
+    choice is the serialization alias.
+
     Args:
         model: The model to inspect.
         visited: Models already inspected, to bound recursion.
@@ -316,8 +320,51 @@ def _check_wire_names(model: type[BaseModel], visited: set[type[BaseModel]]) -> 
             _check_wire_names(nested, visited)
 
 
+def _first_string_choice(alias: Any) -> str | None:
+    """Return the first choice of an all-string :class:`~pydantic.AliasChoices`.
+
+    Args:
+        alias: A field's validation alias.
+
+    Returns:
+        The first choice when the alias is an ``AliasChoices`` whose choices are
+        all plain string names, otherwise ``None``.
+    """
+    if not isinstance(alias, AliasChoices):
+        return None
+    choices = [choice for choice in alias.choices if isinstance(choice, str)]
+    if len(choices) != len(alias.choices):
+        return None
+    return choices[0]
+
+
+def _wire_names_reconcile(validation_alias: Any, serialization_alias: Any) -> bool:
+    """Return whether a field's validation and serialization wire names agree.
+
+    Exact equality is accepted, as is an :class:`~pydantic.AliasChoices` whose
+    first choice is the serialization alias. Pydantic emits the *first* choice as
+    the JSON-schema property name, so only first-choice equality guarantees that
+    the CRD advertises a name the model actually emits on the wire.
+
+    Args:
+        validation_alias: The field's validation alias.
+        serialization_alias: The field's serialization alias.
+
+    Returns:
+        ``True`` when the incoming and outgoing wire names are consistent.
+    """
+    if validation_alias == serialization_alias:
+        return True
+    first_choice = _first_string_choice(validation_alias)
+    return first_choice is not None and first_choice == serialization_alias
+
+
 def _check_field_wire_name(model: type[BaseModel], name: str, field: FieldInfo) -> None:
     """Reject a single field whose wire names cannot be reconciled.
+
+    A field is consistent when its validation alias equals its serialization
+    alias, or when its validation alias is an :class:`~pydantic.AliasChoices`
+    whose first choice is the serialization alias.
 
     Args:
         model: The owning model.
@@ -336,11 +383,13 @@ def _check_field_wire_name(model: type[BaseModel], name: str, field: FieldInfo) 
             f"{model.__name__}.{name} sets only one of validation/serialization alias; "
             "use a single 'alias' so incoming and outgoing wire names stay consistent"
         )
-    if validation_alias != serialization_alias:
-        raise ResourceDefinitionError(
-            f"{model.__name__}.{name} has differing validation alias {validation_alias!r} and "
-            f"serialization alias {serialization_alias!r}; this cannot be reconciled"
-        )
+    if _wire_names_reconcile(validation_alias, serialization_alias):
+        return
+    raise ResourceDefinitionError(
+        f"{model.__name__}.{name} has validation alias {validation_alias!r} and "
+        f"serialization alias {serialization_alias!r}; the first validation alias choice "
+        "must equal the serialization alias so incoming and outgoing wire names agree"
+    )
 
 
 def validate_resource_definition(resource_type: type[CustomResource[Any, Any]]) -> ResourceConfig:

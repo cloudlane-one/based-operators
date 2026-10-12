@@ -6,6 +6,8 @@ from typing import Any
 
 import pytest
 from pydantic import (
+    AliasChoices,
+    AliasPath,
     BaseModel,
     ConfigDict,
     Field,
@@ -349,3 +351,187 @@ def test_computed_field_is_rejected() -> None:
 
     with pytest.raises(ResourceDefinitionError):
         crd_manifest(Computed)
+
+
+def _wire_properties(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Return the generated CRD properties of a manifest's ``spec`` field."""
+    schema = manifest["spec"]["versions"][0]["schema"]["openAPIV3Schema"]
+    properties: dict[str, Any] = schema["properties"]["spec"]["properties"]
+    return properties
+
+
+def test_alias_choices_first_choice_is_accepted() -> None:
+    """An AliasChoices whose first choice is the serialization alias is accepted."""
+
+    class ChoiceSpec(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+        value_from: str | None = Field(
+            default=None,
+            validation_alias=AliasChoices("valueFrom", "value_from"),
+            serialization_alias="valueFrom",
+        )
+
+    class Choice(CustomResource[ChoiceSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="Choice",
+            plural="choices",
+            scope=Scope.NAMESPACED,
+        )
+
+    properties = _wire_properties(crd_manifest(Choice))
+
+    assert "valueFrom" in properties
+    assert "value_from" not in properties
+
+    dumped = Choice.model_validate({"spec": {"valueFrom": "x"}}).spec.model_dump(by_alias=True)
+
+    assert dumped == {"valueFrom": "x"}
+
+
+def test_single_choice_alias_choices_is_accepted() -> None:
+    """A single-choice AliasChoices equal to the serialization alias is accepted."""
+
+    class SingleSpec(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+        value: str | None = Field(
+            default=None,
+            validation_alias=AliasChoices("wireName"),
+            serialization_alias="wireName",
+        )
+
+    class Single(CustomResource[SingleSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="Single",
+            plural="singles",
+            scope=Scope.NAMESPACED,
+        )
+
+    properties = _wire_properties(crd_manifest(Single))
+
+    assert "wireName" in properties
+    assert "value" not in properties
+
+
+def test_wrong_way_round_alias_choices_is_rejected() -> None:
+    """An AliasChoices whose first choice is not the serialization alias is rejected."""
+
+    class WrongWaySpec(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+        value: str | None = Field(
+            default=None,
+            validation_alias=AliasChoices("snake", "camel"),
+            serialization_alias="camel",
+        )
+
+    class WrongWay(CustomResource[WrongWaySpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="WrongWay",
+            plural="wrongways",
+            scope=Scope.NAMESPACED,
+        )
+
+    with pytest.raises(ResourceDefinitionError):
+        crd_manifest(WrongWay)
+
+
+def test_alias_choices_with_path_is_rejected() -> None:
+    """An AliasChoices mixing a string choice with an AliasPath is rejected."""
+
+    class MixedSpec(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+        value: str | None = Field(
+            default=None,
+            validation_alias=AliasChoices("camel", AliasPath("nested", "inner")),
+            serialization_alias="camel",
+        )
+
+    class Mixed(CustomResource[MixedSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="Mixed",
+            plural="mixeds",
+            scope=Scope.NAMESPACED,
+        )
+
+    with pytest.raises(ResourceDefinitionError):
+        crd_manifest(Mixed)
+
+
+def test_alias_path_is_rejected() -> None:
+    """A field whose validation alias is an AliasPath is rejected."""
+
+    class PathSpec(BaseModel):
+        model_config = ConfigDict(populate_by_name=True)
+        value: str | None = Field(
+            default=None,
+            validation_alias=AliasPath("a", "b"),
+            serialization_alias="a",
+        )
+
+    class PathAliased(CustomResource[PathSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="PathAliased",
+            plural="pathaliaseds",
+            scope=Scope.NAMESPACED,
+        )
+
+    with pytest.raises(ResourceDefinitionError):
+        crd_manifest(PathAliased)
+
+
+def test_official_client_alias_style_nests() -> None:
+    """A model using the official Kubernetes client's alias style nests and stays camelCase."""
+
+    class VolumeMount(BaseModel):
+        model_config = ConfigDict(populate_by_name=True, extra="forbid")
+        mount_path: str = Field(
+            validation_alias=AliasChoices("mountPath", "mount_path"),
+            serialization_alias="mountPath",
+        )
+        read_only: bool | None = Field(
+            default=None,
+            validation_alias=AliasChoices("readOnly", "read_only"),
+            serialization_alias="readOnly",
+        )
+
+    class ContainerSpec(BaseModel):
+        model_config = ConfigDict(populate_by_name=True, extra="forbid")
+        name: str
+        volume_mounts: list[VolumeMount] = Field(
+            default_factory=list,
+            validation_alias=AliasChoices("volumeMounts", "volume_mounts"),
+            serialization_alias="volumeMounts",
+        )
+
+    class PodSpec(BaseModel):
+        env: list[ContainerSpec] = Field(default_factory=list)
+
+    class Pod(CustomResource[PodSpec, None]):
+        resource_config = ResourceConfig(
+            group="example.com",
+            version="v1",
+            kind="Pod",
+            plural="pods",
+            scope=Scope.NAMESPACED,
+        )
+
+    properties = _wire_properties(crd_manifest(Pod))
+    item_properties = properties["env"]["items"]["properties"]
+
+    assert "volumeMounts" in item_properties
+
+    mount_properties = item_properties["volumeMounts"]["items"]["properties"]
+
+    assert "mountPath" in mount_properties
+    assert "readOnly" in mount_properties
+    assert "read_only" not in mount_properties
+    assert "mount_path" not in mount_properties
